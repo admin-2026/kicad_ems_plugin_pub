@@ -1,0 +1,53 @@
+# Lint and format config for the plugin -- one tool (ruff) doing both jobs,
+# driven by `make lint` / `make format` (see tools/lint.py for the runner).
+#
+# It lives at the repo root, not under antenna_plugin/, so an editor or IDE
+# opening any file in the checkout picks up the same rules the Makefile uses.
+# ruff is not a build or install dependency: install it where you lint
+# (`pip install ruff`).
+
+# The simulator tree is a separate repo with its own toolchain (clang-tidy /
+# clang-format via ems/make/lint.mk) and its Python scripts answer to it, not
+# to this config -- excluding it here keeps `ruff check .` at the root from
+# reaching across that line. The rest is generated or vendored code.
+extend-exclude = [
+    "ems",
+    "build",
+    "examples",
+    "binaries",
+    "antenna_plugin/vendor",
+]
+
+# Black's default, and the width the formatter targets. The tree is currently
+# hand-wrapped nearer 79 (p99 = 81 columns), so `make format` on a file will
+# rewrap it; that is the one-time cost of adopting a formatter, which is why
+# format/changed exists. 88 is the setting that costs the least of it.
+line-length = 88
+indent-width = 4
+
+# 3.9 is the floor across the KiCad versions the README supports (7.0+ bundle
+# 3.9 or newer), and antenna_plugin/ is written to it -- typing is
+# `Optional[x]`, never `x | None`. Saying so stops pyupgrade (UP045)
+# and bugbear (B905, `zip(strict=)`) from recommending 3.10-only syntax that
+# would import fine on this machine and fail inside pcbnew. tools/ runs under
+# the developer's interpreter and may use newer syntax; the stricter of the
+# two targets is the safe one to lint the whole tree with.
+target-version = "py39"
+
+[lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear (real bug shapes),
+# UP pyupgrade -- bounded by target-version above.
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[lint.per-file-ignores]
+# The suite is assert-driven end to end (tests/bare_package.py runs plain
+# `assert` statements, no pytest), so `assert False` for an unreachable
+# branch is the same tool as every other line in it, not an oversight.
+"tests/*" = ["B011"]
+
+[format]
+# Double quotes and spaces are already what the tree uses; naming them keeps
+# the formatter from drifting if the defaults ever change.
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = false

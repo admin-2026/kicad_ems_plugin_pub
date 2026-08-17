@@ -1,0 +1,98 @@
+/* ============================================================
+   Ultraviolet — the shared product palette.
+
+   This is the only file that names a colour or a typeface. Every
+   other stylesheet refers to the tokens below, so a palette
+   change never means hunting through the CSS.
+
+   The neutrals are not grey: they carry a trace of the accent's
+   hue (268°) at low saturation, which is what keeps paper, ink
+   and the violet reading as one family rather than a grey page
+   with a colour dropped on it.
+
+   ------------------------------------------------------------
+   SHARED WITH THE WEBSITE HOMEPAGE — KEEP THE TWO IN SYNC.
+   ------------------------------------------------------------
+
+   This sheet is not the plugin's alone. The same tokens dress the
+   product homepage and the plugin's pre-flight help guides, which
+   is the whole point: someone who lands on the site and then opens
+   the plugin should be looking at one product, not two.
+
+   The homepage is not tracked in this repo (a working draft lives
+   in examples/ when there is one), so this copy is the reference
+   and the site follows it -- by linking this file if it is built
+   from a checkout that has it, otherwise by carrying a verbatim
+   copy, header and version included.
+
+   It ships here, under antenna_plugin/assets/, because the
+   installed package must run on its own files alone -- the help
+   guides link it directly (../assets/palette.css). Consumers:
+
+     * antenna_plugin/help/*.html — the pre-flight guides, which
+       link this sheet and help_theme.css beside it.
+     * the website homepage's stylesheet (examples/assets/styles.css
+       in the draft), which refers to these tokens and declares
+       none of its own.
+
+   Only the TOKENS are shared. The rules that use them are each
+   side's own: help_theme.css for the guides, the site's styles.css
+   for the homepage. Never move a layout rule in here to share it.
+
+   The version below is the sync handle. Whenever this file
+   changes:
+
+     * bump PATCH for a retuned value (same tokens, same meaning);
+     * bump MINOR for a token added (the other side keeps working);
+     * bump MAJOR for a token renamed or removed -- that breaks
+       every rule referring to it, on both sides, so grep both
+       before doing it.
+
+   A copy on the website's side that has drifted from this one is a
+   bug, not a variant: replace it wholesale rather than merging the
+   two by hand, and let the version say which is newer. A change
+   that starts on the site comes back here the same way.
+
+   The homepage loads Archivo / Newsreader / IBM Plex Mono from
+   Google Fonts; the plugin's pages cannot (they render offline in
+   an embedded WebView), so each --font-* token carries a system
+   fallback that has to stand on its own. That fallback is part of
+   the shared contract: don't drop it on the website's side.
+
+   Version: 1.1.0
+     1.1.0 — added --font-sans / --font-serif / --font-mono, which
+             styles.css used to declare for itself.
+     1.0.0 — initial palette (surfaces, ink, accent, hairlines).
+   ============================================================ */
+
+:root {
+  /* Light only — the palette is not defined for dark surfaces. */
+  color-scheme: light;
+
+  /* type: sans for UI and body, serif for lead prose, mono for
+     microtype (labels, code, paths, table headers) */
+  --font-sans:  "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-mono:  "IBM Plex Mono", ui-monospace, Consolas, "SF Mono", Menlo,
+                monospace;
+
+  /* surfaces */
+  --paper:      #f7f7f8;   /* page */
+  --paper-lift: #fefefe;   /* raised panels: the terminal block */
+
+  /* ink */
+  --ink:        #19161d;   /* headings and body */
+  --graphite:   #60586a;   /* secondary prose */
+  --muted:      #756d7e;   /* mono microtype: labels, captions, plot annotations */
+
+  /* accent — one colour, used sparingly */
+  --signal:     #5b2ad9;
+  --on-signal:  #fcfcfd;   /* type placed on top of --signal */
+  --signal-dim: color-mix(in oklab, var(--signal) 16%, transparent);
+
+  /* hairlines: one ink at three weights, so they can never drift
+     out of step with the text colour */
+  --rule:       color-mix(in oklab, var(--ink) 14%, transparent);
+  --rule-soft:  color-mix(in oklab, var(--ink) 7%, transparent);
+  --grid:       color-mix(in oklab, var(--ink) 5%, transparent);
+}

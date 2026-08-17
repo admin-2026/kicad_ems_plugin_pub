@@ -1,0 +1,226 @@
+/* ============================================================
+   Pre-flight help guides — prose styles.
+
+   The look of the product homepage (examples/index.html) applied
+   to a single-column document: engineering paper, graphite ink,
+   one signal colour, hairlines instead of boxes. Colours and
+   typefaces are not defined here -- palette.css owns those tokens
+   and every guide links it first.
+
+   That palette is SHARED with the website homepage and versioned
+   for the purpose (see its header): match it, don't fork it. Rules
+   only a help guide needs belong here, where the website never
+   sees them; a value the two should agree on belongs in a token
+   there, with the version bumped.
+
+   Linked directly by antenna_plugin/help/*.html (../assets/...),
+   which the help viewer opens where they are installed; nothing
+   inlines this sheet, so editing it restyles every guide with no
+   rebuild.
+
+   Scope: antenna_plugin/help/*.html only. The grid and report
+   views keep their dark scan_views.css, which matches the theme
+   the solver bakes into its own pages -- light chrome around a
+   dark 3-D scene would read as a bug, and the solver's theme is
+   compiled in, not overridable.
+
+   The whole markup vocabulary of a guide is:
+     main.doc > h1, p.lead, h2, p, ol/ul > li, table, div.note
+     inline: code, span.path, em, strong, sub, a
+   Anything outside that list is not styled here on purpose.
+
+   No webfonts, no animation: the pages render offline in KiCad's
+   embedded WebView, which cannot reach the network, and a guide
+   opened on a blocked run should be readable at once rather than
+   fading in.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Faint engineering grid — atmosphere, not pattern. Fixed, so a
+   long guide scrolls over it the way the homepage hero does. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 88px 88px;
+  mask-image: radial-gradient(ellipse 120% 80% at 70% 0%, #000 0%, transparent 78%);
+}
+
+/* ---------- the document ---------- */
+
+/* One measure, centred. No card: the page is the paper, and a
+   panel floating on it would be the one boxed element in a design
+   built out of hairlines. */
+main.doc {
+  position: relative;   /* over the grid backdrop */
+  z-index: 1;
+  max-width: 46rem;
+  margin-inline: auto;
+  padding: clamp(2.5rem, 7vh, 4rem) clamp(1.25rem, 5vw, 3rem)
+           clamp(3rem, 9vh, 4.5rem);
+}
+
+main.doc > * + * { margin-top: 1.1rem; }
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.375rem);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+/* The homepage's signature: an emphasised word drops into the
+   serif. Available to a guide's headline, unused by most. */
+h1 em, h2 em {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 300;
+  letter-spacing: -0.015em;
+}
+
+/* The standfirst under the headline: serif, light, graphite. */
+.lead {
+  margin-top: 1.25rem;
+  max-width: 46ch;
+  font-family: var(--font-serif);
+  font-size: clamp(1.0625rem, 1.6vw, 1.1875rem);
+  font-weight: 300;
+  line-height: 1.55;
+  color: var(--graphite);
+}
+
+/* Sections are ruled off rather than boxed. */
+h2 {
+  margin: 2.25rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+p { margin: 0; }
+
+ol, ul {
+  margin: 0;
+  padding-left: 1.35rem;
+}
+
+li { margin: 0.4rem 0; }
+
+li > ul, li > ol { margin-top: 0.4rem; }
+
+/* Markers as microtype, so a numbered fix reads like an
+   instrument's step list rather than a word processor's. */
+ol { list-style: decimal; }
+ol::marker, li::marker { color: var(--muted); }
+ol > li::marker { font-family: var(--font-mono); font-size: 0.85em; }
+
+strong { font-weight: 600; }
+
+em { font-style: italic; }
+
+sub { font-size: 0.75em; }
+
+a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--signal-dim);
+  transition: border-color 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+a:hover { border-bottom-color: var(--signal); }
+
+/* ---------- inline mono: UI paths, keys, filenames ---------- */
+
+/* .path is the guides' workhorse (menu paths, layer names, Ctrl+S).
+   Lifted paper inside a hairline, matching the homepage's terminal
+   block -- the one raised surface in the design. */
+code, .path {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--paper-lift);
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  padding: 0.1em 0.34em;
+  white-space: nowrap;
+}
+
+/* ---------- tables ---------- */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9375rem;
+}
+
+th, td {
+  padding: 0.5em 0.8em;
+  text-align: left;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+}
+
+/* Header cells take the homepage's .label microtype. */
+th {
+  border-bottom-color: var(--rule);
+  font-family: var(--font-mono);
+  font-size: 0.688rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+tr:last-child td { border-bottom: 0; }
+
+/* ---------- the closing note ---------- */
+
+/* Every guide ends with one: why the check exists, or why it
+   blocks. A single accent rule marks it -- the only place the
+   signal colour appears on a help page, which is what keeps it
+   meaning "read this". */
+.note {
+  margin-top: 2.25rem;
+  padding: 1rem 1.25rem;
+  border-left: 2px solid var(--signal);
+  background: var(--paper-lift);
+  font-size: 0.9375rem;
+  color: var(--graphite);
+}
+
+.note strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* ---------- narrow windows ---------- */
+
+/* The help viewer is a small floating window, often narrower than
+   a phone; the guide has to survive it. */
+@media (max-width: 34rem) {
+  body { font-size: 14px; }
+  main.doc { padding-inline: 1.25rem; }
+  .path, code { white-space: normal; }
+}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!-- Pre-flight guide for the "stackup-dirty" warning (see simulate.preflight).
+     Styled by antenna_plugin/assets/palette.css + help_theme.css, linked
+     relative to this file: the help viewer loads the guide from the install
+     tree, where those sheets are siblings, so nothing is templated or copied
+     at display time. Keep it plain HTML -- no module scripts, no CDN, no
+     network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antenna Designer help — Unsaved stackup changes</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Unsaved stackup changes</h1>
+<p class="lead">The Physical Stackup in the editor differs from the one in the
+saved <span class="path">.kicad_pcb</span> file. The simulation reads the
+file, so running now would use the <em>old</em> stackup. This is a warning,
+not a blocker — Run offers to save for you.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Click the banner's <em>Save&nbsp;board</em> button, or save in the PCB
+      editor (<span class="path">Ctrl+S</span>) — either brings the file up to
+      date and clears this warning.</li>
+  <li>Or just press <em>Run&nbsp;simulation</em>: it prompts with
+      <em>Save&nbsp;&amp;&nbsp;Continue</em> before starting.</li>
+</ol>
+
+<h2>Notes</h2>
+<ul>
+  <li>Only the <strong>stackup</strong> is read from the file. Unsaved trace
+      or footprint edits don't trigger this warning — gerbers are plotted from
+      the live board.</li>
+  <li>After the plugin saves on your behalf, KiCad's title bar may still show
+      the <span class="path">*</span> modified marker — the editor keeps its
+      own dirty flag, which a plugin save cannot clear. The file on disk is
+      current regardless.</li>
+</ul>
+
+<div class="note"><strong>Why the file is authoritative:</strong> some KiCad
+builds expose no usable scripting API for the stackup manager, so the plugin
+parses the saved file. Detection errs on the side of warning: prompting to
+save is cheap, silently simulating a stale stackup is not.</div>
+</main>
+</body>
+</html>

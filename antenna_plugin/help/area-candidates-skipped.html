@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!-- Advisory guide for the "area-candidates-skipped" warning
+     (design.wizard_scan.plan_problems). Styled by
+     antenna_plugin/assets/palette.css + help_theme.css, linked relative to
+     this file: the help viewer loads the guide from the install tree, where
+     those sheets are siblings, so nothing is templated or copied at display
+     time. Keep it plain HTML -- no module scripts, no CDN, no network. A
+     stylesheet link resolves fine from a file:// page; ES-module fetches are
+     what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antenna Designer help — Candidates don't fit the area</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Candidates don't fit the area</h1>
+<p class="lead">Some of the candidates the scan was asked for describe an
+antenna the area marker cannot hold. Those are <strong>skipped</strong> — they
+are never spliced, meshed or simulated — and the pass runs the ones that fit.
+This is a warning, not a blocker: the scan still runs, just with fewer
+candidates than you asked for.</p>
+
+<h2>Why a candidate doesn't fit</h2>
+<p>Every candidate is laid out inside the marked rectangle, starting at the
+feed arrow and keeping a small border off the other three edges. A candidate
+overflows when there is no way to draw it in there: the resonant length is
+longer than the stem plus the room along the edge, the stem itself is deeper
+than the rectangle, the track is wider than the feed edge is long, or the
+topology's own constraints (an inverted-F's tap inside its arm) cannot be met
+at that size. The design says which in the warning.</p>
+
+<h2>Why they are skipped rather than simulated</h2>
+<p>There is no antenna to measure. A geometry that doesn't fit has no copper
+to splice into the gerbers, so the alternative to skipping is a solver run per
+miss that ends in the same message several hours later. Skipping is also what
+keeps the rest of the sweep honest: the candidates that do fit are simulated
+and scored exactly as they would have been.</p>
+<p>The warning exists because the skipping is otherwise invisible. A sweep of
+five candidates that quietly runs two is not the scan you planned — the
+resonance you are hunting may be entirely outside what is left.</p>
+
+<h2>The two shapes this takes</h2>
+<ul>
+  <li><strong>A bounded sweep</strong> (you typed min and max on the swept
+      row): the values that don't fit are named, in millimetres. The rest of
+      the range runs.</li>
+  <li><strong>The automatic λ/4 ladder</strong> (both bounds on the resonant
+      length left blank): nothing is dropped by name. The ladder's rungs are
+      clamped to the longest antenna the area holds, so the ones past that
+      ceiling land on the same length and collapse into one candidate. Asking
+      for five gets you however many distinct lengths the area has room
+      for.</li>
+</ul>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Grow the area marker — the sliders in the wizard's Area section, or
+      KiCad's own tools on the marker footprint. Deeper gives the stem more
+      room; longer along the feed edge gives the arm more room.</li>
+  <li>Or narrow the sweep to values that fit: lower the swept row's max, or
+      lower the fixed values (a narrower track leaves more length for the
+      antenna, and so does a longer stem — up to the depth of the area, past
+      which the stem is what stops fitting).</li>
+  <li>Or lower the target frequency — a quarter wave at a lower frequency is
+      longer, so it is the same fix in reverse: if the ladder collapses, the
+      antenna you want simply doesn't fit the space you gave it.</li>
+</ol>
+
+<div class="note"><strong>Tip:</strong> drag the swept row's slider before
+starting a pass. A candidate that doesn't fit is still drawn — on the marker's
+own layer instead of on copper, spilling out of the rectangle by exactly what
+is missing — so you can see how much bigger the area needs to be, and in which
+direction.</div>
+</main>
+</body>
+</html>

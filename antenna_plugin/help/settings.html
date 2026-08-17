@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<!-- The settings reference, opened from the About page's Documentation box
+     (gui.sections.guides). Unlike the pre-flight guides beside it this one
+     belongs to no Problem: it is the whole form, one table per box of the
+     window, so it is named by file rather than by problem id.
+
+     Styled by antenna_plugin/assets/palette.css + help_theme.css, linked
+     relative to this file: the help viewer loads the guide from the install
+     tree, where those sheets are siblings, so nothing is templated or copied
+     at display time. Keep it plain HTML -- no module scripts, no CDN, no
+     network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks (see docs/viewer.md).
+
+     Keep the defaults column true to the code that owns each one: the
+     applications catalog, gui/options.py (ADV_GROUPS, SPEED_PRESETS), the
+     marker/area/scan sections and gui/sections/advanced.py. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antenna Designer help — Settings reference</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Settings <em>reference</em></h1>
+<p class="lead">Every knob in the window, what it changes, and what it does
+when you leave it alone.</p>
+
+<p>Settings are saved per project, in
+<span class="path">simulation/settings.yaml</span> beside the board, and come
+back on the next launch. The design form — target, speed, Advanced, the marker
+picks and the pass knobs — is <em>one</em> value shared by the Simulate tab and
+every designer tab; a designer's scan rows belong to that designer alone.</p>
+
+<h2>Design target</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Application</td><td>Fills the pattern frequency and carries the band
+      and input impedance results are scored against.</td>
+      <td>Bluetooth / BLE (2.4&nbsp;GHz)</td></tr>
+  <tr><td>Pattern frequency (GHz)</td><td>The frequency the far-field pattern is
+      computed at. Typing one snaps the picker to
+      <span class="path">Custom…</span>.</td><td>2.45</td></tr>
+  <tr><td>Bandwidth (MHz)</td><td><span class="path">Custom…</span> only: band =
+      frequency ± half of this.</td><td>100</td></tr>
+  <tr><td>Input impedance (Ω)</td><td><span class="path">Custom…</span> only: what
+      a candidate's match is judged against.</td><td>50</td></tr>
+</table>
+
+<h2>Feed marker (Simulate)</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Feed width</td><td>Drawn width of the marker, 0.10–5.00&nbsp;mm.
+      Visual only — the solver severs its own feed gap on the grid.</td>
+      <td>1.00&nbsp;mm</td></tr>
+  <tr><td>Feed layer</td><td>The copper layer the feed line is on.</td>
+      <td>top copper</td></tr>
+</table>
+<p>The feed point and its direction come from the placed marker only; there are
+no coordinate fields. Moving a slider reshapes the marker on the board live.</p>
+
+<h2>Antenna area and feed (designer tabs)</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Area width</td><td>The rectangle the antenna must fit in, 2–200&nbsp;mm
+      — capped at the <span class="path">Edge.Cuts</span> span in x when the board
+      has an outline.</td><td>from the design, at the target frequency</td></tr>
+  <tr><td>Area height (depth)</td><td>The same, in y.</td>
+      <td>from the design</td></tr>
+  <tr><td>Feed position along its edge</td><td>Where the feed sits on the
+      rectangle's feed edge, 0–100&nbsp;%.</td><td>30&nbsp;%</td></tr>
+  <tr><td>Feed width / Feed layer</td><td>Shared with the feed marker above; the
+      width also sets this marker's feed triangle.</td>
+      <td>1.00&nbsp;mm / top copper</td></tr>
+</table>
+<p>Move (<span class="path">M</span>) and rotate (<span class="path">R</span>) the
+marker with KiCad's own tools. Placing a fresh marker resets the scan rows.</p>
+
+<h2>Speed / accuracy</h2>
+<p>One slider over seven stops, fastest to most accurate; it drives the six
+Optimizations toggles in Advanced, and each stop is captioned with the settings
+it stands for. Changing a toggle by hand reads <em>Custom</em>. The default stop
+is <em>Mur ABC · no refinement · conformal · coarse air · 2 cells across driven
+copper</em> — the cheapest stop that meshes the copper at full resolution. One
+notch up is the same mesh inside CPML.</p>
+
+<h2>Scan (designer tabs)</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Swept parameter (the radio)</td><td>The one parameter the sweep varies;
+      every other row contributes its fixed value.</td>
+      <td>the design's length row</td></tr>
+  <tr><td>Min / Max</td><td>Bounds of the sweep (mm), live on the swept row only.
+      Clearing both auto-scans around λ/4.</td><td>seeded from λ/4</td></tr>
+  <tr><td>Value</td><td>The fixed value a non-swept parameter takes; on the swept
+      row it is the slider's read-only readout, and moving the slider previews
+      that shape on the marker.</td><td>seeded from λ/4</td></tr>
+  <tr><td>Candidates</td><td>How many geometries the sweep simulates, 1–50.</td>
+      <td>5</td></tr>
+</table>
+
+<h2>The pass (Run, and a designer's Scan)</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Simulation time</td><td><em>Auto (ring-down)</em> solves until the feed
+      port has rung down; unticking it takes a fixed number of ns.</td>
+      <td>Auto</td></tr>
+  <tr><td>Ground/source</td><td><em>Auto</em> lets the solver find the ground (or
+      source) reference the port returns through and strap the port to it. Off
+      drives the board exactly as drawn.</td><td>Auto</td></tr>
+</table>
+
+<h2>Advanced</h2>
+<p>Every knob in the Advanced pane is one key of the solver's config, and the
+pane says which, in brackets: an empty field shows it after its default —
+<span class="path">0 = auto [cell_mm]</span> — and a tick or a picker carries it
+greyed beside its label. That key is the name the solver's warnings, its log and
+the run's <span class="path">config.yaml</span> use, so a message about a knob
+leads to the field that set it. Typing a value hides the placeholder; the key
+stays on the field's tooltip. The tables below name each knob the way the window
+does.</p>
+
+<h2>Advanced · Materials</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Metal / substrate per layer</td><td>The conductor and dielectric each
+      stackup layer is made of — the only source of loss. A layer left unset
+      stops the run.</td><td>none — you pick</td></tr>
+  <tr><td>Metal model</td><td><span class="path">sheet</span> (fast, lossless),
+      <span class="path">sibc</span> (skin-effect loss),
+      <span class="path">slab</span> (volumetric foil).</td>
+      <td>sibc</td></tr>
+</table>
+
+<h2>Advanced · Optimizations</h2>
+<p>The six knobs the Speed / accuracy slider drives; the defaults below are its
+default stop.</p>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Coarse air mesh</td><td>Fewer cells in the air margin and PML.</td>
+      <td>on</td></tr>
+  <tr><td>Skip in-plane feature refinement</td><td>Staircases thin traces instead
+      of subdividing across them.</td><td>on</td></tr>
+  <tr><td>Mur boundary instead of CPML</td><td>Leaner; reflects ~1e-2 against
+      CPML's ~1e-4.</td><td>off</td></tr>
+  <tr><td>Conformal metal</td><td>Sub-cell trace edges, at no extra cells.</td>
+      <td>on</td></tr>
+  <tr><td>Adaptive mesh</td><td>Coarsens copper far from the feed — faster on
+      large boards, less accurate on that outer copper.</td><td>on</td></tr>
+  <tr><td>Cells across driven copper</td><td>1–5; also sets how fine the automatic
+      base cell comes out.</td><td>2</td></tr>
+</table>
+
+<h2>Advanced · Cell size</h2>
+<p>Two fields, one control: the range the lattice's base cell may take. Left
+blank, the solver sizes the cell itself — the finer of λ/20 and one Nth of the
+driven copper (<em>Cells across driven copper</em>, above). The box captions
+itself with what the pair currently means, and the two fields push that
+automatic cell in opposite directions.</p>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Start at (mm)</td><td>The cell the run starts from. Typing one switches
+      the automatic rule off — neither the wavelength nor the driven-copper term
+      applies any more — so it is the field for a deliberately
+      <em>coarser</em> mesh, and the one that goes stale when the board
+      changes.</td><td>0 = auto</td></tr>
+  <tr><td>Never coarser than (mm)</td><td>A ceiling on that cell: the smallest gap
+      or clearance that has to survive on the lattice. It only ever
+      <em>refines</em> — it joins the automatic rule rather than replacing it,
+      and a ceiling above the cell the rule already picked does nothing at all.
+      It also bounds how far an over-budget re-mesh may coarsen the cell; past
+      the ceiling the run stops.</td><td>0 = no ceiling</td></tr>
+</table>
+<p>Halving a cell is roughly eight times the cells and twice the steps — about
+16× the wall clock — so on a large board a ceiling belongs with the
+<em>Adaptive mesh</em> tick on, which keeps the copper far from the feed at the
+cell it had. To coarsen a mesh <em>without</em> throwing the rule away, lower
+<em>Cells across driven copper</em> instead of typing a start cell: it loosens
+the copper term rather than deleting it.</p>
+
+<h2>Advanced · Mesh</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Substrate cell height (mm)</td><td>Vertical (z) cell size through the
+      dielectric; in-plane the substrate is meshed at the base cell.</td>
+      <td>0 = auto</td></tr>
+  <tr><td>Mesh grading ratio</td><td>How fast cells may grow apart.</td>
+      <td>0 = 1.5</td></tr>
+  <tr><td>Air margin (mm)</td><td>Air modelled around the board.</td>
+      <td>0 = auto</td></tr>
+  <tr><td>Coarse-air cell (mm)</td><td>Cell size out in that air.</td>
+      <td>0 = auto</td></tr>
+  <tr><td>PML cells</td><td>Depth of the absorbing boundary.</td><td>0 = 10</td></tr>
+  <tr><td>Mesh memory budget (GB)</td><td>Ceiling the mesh is priced against
+      before anything per-cell is allocated.</td><td>0 = auto (75&nbsp;% of RAM)</td></tr>
+  <tr><td>Re-mesh at the finest cell that fits</td><td>An over-budget lattice is
+      re-meshed at the finest cell that fits and the run goes on (it is reported)
+      — but never past a <em>Never coarser than</em> ceiling, which stops it.
+      Off refuses instead — for a run whose mesh must be the one asked for.</td>
+      <td>on</td></tr>
+  <tr><td>Nudge the mesh onto the copper and board edges</td><td>Node lines slide
+      onto nearby axis-aligned edges, so a trace is meshed at its drawn width.
+      Same cell count; may cost up to 5&nbsp;% of the time step.</td>
+      <td>on</td></tr>
+</table>
+
+<h2>Advanced · Feature refinement</h2>
+<p>Graded by these; the master switch is <em>Skip in-plane feature
+refinement</em> above.</p>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Refine features under (mm)</td><td>Only features narrower than this are
+      subdivided.</td><td>0 = 3·cell</td></tr>
+  <tr><td>Min feature cell (mm)</td><td>Floor on the subdivided cell.</td>
+      <td>0 = cell/5</td></tr>
+  <tr><td>Min via cell (mm)</td><td>The same floor, for vias.</td>
+      <td>0 = feature floor</td></tr>
+  <tr><td>Feature subdivision N</td><td>Cells across a refined feature, 3–5.</td>
+      <td>blank = 3</td></tr>
+  <tr><td>Fine-mesh radius (λ)</td><td>How far the fine band reaches from the
+      feed; adaptive stops only.</td><td>0.25</td></tr>
+  <tr><td>Grade adaptive bands</td><td>Coarser bands are graded rather than
+      pinned, so far copper doesn't throttle the time step.</td><td>on</td></tr>
+</table>
+
+<h2>Advanced · Frequencies and run</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Max frequency (GHz)</td><td>Top of the excited band.</td>
+      <td>0 = auto</td></tr>
+  <tr><td>Min frequency (GHz)</td><td>Bottom of it.</td><td>0 = auto</td></tr>
+  <tr><td>Fixed steps</td><td>Stop after this many time steps.</td>
+      <td>0 = use the simulation time</td></tr>
+  <tr><td>Solver threads</td><td>Worker threads the solve uses.</td>
+      <td>0 = auto-tune</td></tr>
+</table>
+
+<h2>Advanced · Feed port</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Port resistance (Ω)</td><td>What the port is driven through;
+      <span class="path">inf</span> or <span class="path">none</span> is an ideal
+      current source.</td><td>50</td></tr>
+  <tr><td>Snap the feed to the centerline</td><td>Puts the driven edge on the
+      centerline of the copper it bridges, so the impedance doesn't depend on how
+      precisely the marker landed. Off places it exactly as marked.</td>
+      <td>on</td></tr>
+</table>
+
+<h2>Advanced · Ground</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Ground check</td><td>Whether a port with no DC path to ground stops the
+      run (<span class="path">strict</span>), warns
+      (<span class="path">warn</span>) or is ignored
+      (<span class="path">off</span>).</td><td>strict</td></tr>
+  <tr><td>Connectivity raster (mm)</td><td>The bitmap the copper is read on for
+      that check and the automatic tie — never the mesh.</td><td>0 = auto</td></tr>
+  <tr><td>Auto ground/source radius (mm)</td><td>How far from the feed the
+      automatic reference search may look.</td><td>0 = from the port</td></tr>
+</table>
+
+<h2>Advanced · Markers</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th><th>Default</th></tr>
+  <tr><td>Marker layer</td><td>The User layer both the feed marker and the area
+      marker are drawn on, <span class="path">User.1</span>–<span class="path">User.9</span>.</td>
+      <td>User.2</td></tr>
+</table>
+
+<div class="note"><strong>Blank is not empty:</strong> a blank field (or a
+<span class="path">0</span>) means <em>auto</em> — the solver derives it from the
+board and the band, and the report says what it resolved to. What is never
+defaulted is a number about your board: a missing stackup thickness,
+permittivity or material stops the run instead of being quietly replaced, so the
+plugin only ever simulates values you actually entered.</div>
+</main>
+</body>
+</html>

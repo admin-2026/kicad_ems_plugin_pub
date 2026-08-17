@@ -1,0 +1,122 @@
+Antenna Designer Solver -- Non-Commercial Licence
+Version 1.0, 2026-08-21
+
+Copyright (c) 2026 admin-2026 <https://github.com/admin-2026>.
+All rights reserved except as granted below.
+
+
+1. WHAT THIS COVERS
+
+   "Solver" means the compiled simulator program distributed as
+   `binaries/monopole` and `binaries/monopole.exe` (whatever directory it is
+   installed into), together with any output it prints identifying itself.
+
+   The Solver is proprietary software. It is not open source, and no source
+   code for it is published.
+
+   This licence covers the Solver only. The rest of Antenna Designer -- the
+   pcbnew plugin, its Python source, its documentation and its tooling -- is
+   MIT licensed; see LICENSE. Third-party components bundled with the plugin
+   keep their own licences.
+
+
+2. NON-COMMERCIAL PURPOSE
+
+   A "Non-Commercial Purpose" is any purpose that is not primarily intended
+   for or directed toward commercial advantage or monetary compensation.
+   Personal and hobby projects, teaching and coursework, academic research,
+   and evaluating the Solver are Non-Commercial Purposes.
+
+   The following are NOT Non-Commercial Purposes, and need a separate licence
+   (section 5):
+
+     a) designing, dimensioning, validating or qualifying an antenna, board or
+        product that is sold, licensed, or offered as part of a paid product
+        or service -- whether or not the Solver is used at the time of sale;
+
+     b) use in the course of a business, or on a business's behalf, other than
+        evaluating the Solver before licensing it;
+
+     c) consulting, contract, or bureau work done for a fee, including running
+        the Solver on someone else's behalf;
+
+     d) offering the Solver, or access to it, as part of a paid or
+        advertising-supported service.
+
+   Being paid a salary is not what makes a use commercial; what the work is
+   for is. Research published openly is non-commercial even when the
+   institution is funded, and a hobby board is non-commercial even if you
+   later give it away for free.
+
+
+3. GRANT
+
+   Subject to the terms of this licence, you are granted a worldwide,
+   royalty-free, non-exclusive, non-transferable, revocable licence to:
+
+     a) install and run the Solver, on any number of machines you control, for
+        a Non-Commercial Purpose;
+
+     b) use the results it produces -- simulation data, reports, plots and any
+        geometry derived from them -- for a Non-Commercial Purpose. Results
+        obtained under this licence may not later be used for a commercial
+        purpose;
+
+     c) redistribute the Solver, unmodified and complete, provided that the
+        distribution is itself non-commercial, that you charge no more than
+        the cost of the medium, and that a copy of this licence travels with
+        it. Redistributing the Solver as part of an unmodified Antenna
+        Designer package satisfies this.
+
+
+4. RESTRICTIONS
+
+   Except as section 3 allows, and except to the extent that applicable law
+   grants a right that cannot be waived by agreement, you may not:
+
+     a) modify, adapt, translate or create derivative works of the Solver, or
+        reverse engineer, decompile or disassemble it;
+
+     b) remove, obscure or alter this licence or any notice the Solver
+        displays or contains;
+
+     c) sublicense, rent, lease, sell or otherwise transfer the Solver, or
+        distribute it as part of any commercial offering;
+
+     d) use the Solver, or the knowledge of its internals gained from it, to
+        develop a competing electromagnetic simulator.
+
+
+5. COMMERCIAL LICENCES
+
+   Commercial use is available under a separate written agreement. Ask through
+   either of the project's public channels:
+
+     Source repository: https://github.com/admin-2026/kicad_ems_plugin_pub
+     Community chat:    https://discord.gg/XDY6EE5WA
+
+
+6. NO WARRANTY
+
+   THE SOLVER IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+   An electromagnetic simulation is a model, not a measurement. Nothing the
+   Solver reports is a guarantee about a physical board, and it is on you to
+   verify a design before building or shipping it.
+
+
+7. NO LIABILITY
+
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+   ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOLVER OR THE USE OR OTHER
+   DEALINGS IN THE SOLVER.
+
+
+8. TERMINATION
+
+   This licence ends automatically if you breach it. It also ends if you stop
+   using the Solver and delete your copies. Sections 6 and 7 survive.
+</content>

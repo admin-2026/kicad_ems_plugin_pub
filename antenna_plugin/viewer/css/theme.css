@@ -1,0 +1,190 @@
+  :root{
+    color-scheme:dark;
+    --bg:#0d0d0c;          /* page, and the 3D viewport behind it */
+    --rail:#151514;        /* the side column */
+    --plot:#101010;        /* any chart surface, and the tiles */
+    --line:#2c2c2a;        /* hairline */
+    --line-2:#383835;      /* the rule that has to be seen */
+    --grid:rgba(255,255,255,.07);
+    --ink:#f0f0f0;
+    --ink-2:#c3c2b7;
+    --ink-3:#898781;
+    --accent:#3987e5;
+    --warning:#fab219;     /* status, never a series */
+    --s1:#3987e5;--s2:#d95926;--s3:#199e70;
+    --s4:#c98500;--s5:#d55181;--s6:#008300;
+    --ax-x:#e66767;--ax-y:#199e70;--ax-z:#3987e5;
+    --font-ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    --font-mono:ui-monospace,"JetBrains Mono","IBM Plex Mono",SFMono-Regular,
+                Menlo,Consolas,monospace;
+    /* A run's per-property verdicts, as aliases: a pass, a warning and a
+       failure wear colours the theme already has rather than a second palette
+       standing beside it. */
+    --v-pass:var(--s3);--v-warn:var(--warning);--v-fail:var(--ax-x);
+    --v-none:var(--ink-3);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink-2);font-size:13px;
+       font-family:var(--font-ui);-webkit-font-smoothing:antialiased}
+  ::selection{background:rgba(57,135,229,.32)}
+  h1{font-size:11px;font-weight:500;letter-spacing:.16em;
+     text-transform:uppercase;color:var(--ink-3);margin:2px 0 12px}
+  h2{font-size:13px;font-weight:500;color:var(--ink);margin:20px 0 8px}
+  .info{font-size:12.5px;line-height:1.6;color:var(--ink-3)}
+  /* What a page says in place of its panels when the selected run has nothing
+     to draw (vizRenderEmpty). */
+  .muted{color:var(--ink-3)}
+  /* Bold in a paragraph is a label; a figure asks for b.num, which puts it
+     in the mono face so the numbers down a column line up on the same digit
+     width instead of jittering. */
+  .info b{font-weight:500;color:var(--ink-2)}
+  b.num{font-family:var(--font-mono);font-weight:500;color:var(--ink);
+        font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  /* The one status colour on these pages: a record that is partial. */
+  b.warn{color:var(--warning)}
+  canvas.plot{width:100%;height:240px;background:var(--plot);
+              border:1px solid var(--line);border-radius:6px;display:block;
+              cursor:crosshair}
+  /* Stat tiles: one hairline grid, shared by the report's summary and the
+     filter page's figures of merit -- the gap is the rule. */
+  .metrics{display:grid;gap:1px;margin:12px 0 4px;background:var(--line);
+           border:1px solid var(--line);border-radius:8px;overflow:hidden;
+           grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .card{background:var(--plot);padding:11px 12px}
+  .card .v{font:500 17px/1.15 var(--font-mono);color:var(--ink);
+           font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+           overflow-wrap:anywhere}
+  .card .v small{font-size:11px;color:var(--ink-3);margin-left:3px}
+  .card .l{margin-top:6px;font-size:10px;letter-spacing:.07em;line-height:1.35;
+           text-transform:uppercase;color:var(--ink-3)}
+  /* Measurement rows: name left, figure ranged right on a hairline, so the
+     values line up in a column of their own down the panel. The report's
+     metrics are a list of these, and so is a grid group's material -- one
+     row shape wherever a page states "this quantity is that value". */
+  .kv{display:flex;align-items:baseline;gap:14px;padding:5px 0;
+      border-bottom:1px solid rgba(255,255,255,.05);font-size:12.5px}
+  .kv span{color:var(--ink-3);white-space:nowrap}
+  .kv b{margin-left:auto;text-align:right;font-family:var(--font-mono);
+        font-weight:500;font-size:12px;color:var(--ink);
+        font-variant-numeric:tabular-nums}
+  .kv-sec{margin:14px 0 2px;font-size:10px;letter-spacing:.12em;
+          text-transform:uppercase;color:var(--ink-3)}
+  /* What a run says about itself (js/notices.js): a LIST at the foot of the
+     rail, under everything the run drew. One row per notice -- a sign, the
+     title, and the word that opens it -- with the figures and the explanation
+     under that row, the same shape as the group list's own "?" rows. Shut, a
+     notice is one line, and the sign is the only thing on it wearing the
+     theme's alarm colour; nothing else on these pages competes for that. */
+  .ntc-item{border-bottom:1px solid var(--line)}
+  .ntc-item:first-child{margin-top:18px;border-top:1px solid var(--line)}
+  .ntc-row{display:flex;align-items:baseline;gap:9px;padding:8px 6px}
+  .ntc-sign{flex:none;font-size:12px;line-height:1.3;color:var(--ink-3)}
+  .ntc-warn .ntc-sign{color:var(--warning)}
+  .ntc-title{font-size:12.5px;line-height:1.45;color:var(--ink-2)}
+  /* The disclosure is a word ranged right, not a button: a list of notices
+     then reads as one column of titles and one of controls, and a control
+     drawn like a control would read as an action the reader has to take. */
+  .ntc-btn{margin-left:auto;flex:none;padding:0;border:0;background:none;
+           cursor:pointer;font:400 11px/1.4 var(--font-ui);color:var(--ink-3);
+           border-bottom:1px solid var(--line-2);white-space:nowrap}
+  .ntc-btn:hover{color:var(--ink);border-bottom-color:var(--ink-3)}
+  /* Indented under the row it belongs to, clear of the sign, like the group
+     list's own explanation boxes. */
+  .ntc-more{display:none;padding:1px 8px 11px 27px}
+  .ntc-more.open{display:block}
+  .ntc-more p{margin:7px 0 0;font-size:11.5px;line-height:1.55;
+              color:var(--ink-3)}
+  /* The measurement rows, a step smaller: they are evidence for the title,
+     not the list's subject. */
+  .ntc-more .kv{font-size:11.5px;padding:4px 0}
+  .ntc-more .kv b{font-size:11px}
+  /* Toggle row: the grid viewer's cell groups and the report's layer and
+     view switches are the same control, so they are one row -- swatch, name,
+     and a right-aligned mono count that lines up down the list. */
+  /* The provenance footnote at the foot of every page (FDTD_VIZ_CREDIT):
+     a hairline above it, the page's quietest ink, and a link that is only
+     underlined -- it is a signature, not a piece of the read. */
+  .credit{margin-top:22px;padding-top:9px;border-top:1px solid var(--line);
+          font-size:11px;line-height:1.5;color:var(--ink-3)}
+  .credit a{color:var(--ink-3);text-decoration:none;
+            border-bottom:1px solid var(--line-2)}
+  .credit a:hover{color:var(--ink-2);border-bottom-color:var(--ink-3)}
+  /* The hint riding after the link: a step quieter again, so the eye reads
+     the name first and the instruction only if it wants it. */
+  .credit small{margin-left:6px;font-size:10.5px;opacity:.72}
+  .togglerow{display:flex;align-items:center;gap:9px;padding:5px 6px;
+             margin:0 -6px;border-radius:5px;font-size:12.5px;
+             color:var(--ink-2);cursor:pointer;user-select:none;
+             transition:background .12s ease,color .12s ease}
+  .togglerow:hover{background:rgba(255,255,255,.045);color:var(--ink)}
+  .togglerow .n{margin-left:auto;font-family:var(--font-mono);font-size:11px;
+                color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .swatch{width:10px;height:10px;border-radius:3px;flex:none;
+          box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+  input[type=checkbox],input[type=radio]{accent-color:var(--accent);
+      width:13px;height:13px;margin:0;cursor:pointer}
+  input[type=range]{accent-color:var(--accent)}
+  :focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+  /* One page-load move, not a dozen: the column lifts in once, in a few
+     steps down its length, and never animates again. */
+  @keyframes vizIn{from{opacity:0;transform:translateY(7px)}
+                   to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:no-preference){
+    #side>*{animation:vizIn .45s cubic-bezier(.22,.61,.36,1) backwards}
+    #side>:nth-child(2){animation-delay:.05s}
+    #side>:nth-child(3){animation-delay:.1s}
+    #side>:nth-child(4){animation-delay:.14s}
+    #side>:nth-child(n+5){animation-delay:.18s}
+  }
+
+  /* ---- several runs in one page (js/runs.js) --------------------------- */
+  /* Hidden on a page drawing the one dump beside it; the switcher shows the
+     block when a manifest gives it runs to step between. */
+  #scanline{margin:10px 0 2px}
+  /* The run list is the page's one piece of navigation, so it gets the same
+     hairline treatment as the grid page's group list: rows separated by rules,
+     not by gaps. Label left, verdict glyphs ranged right; the selected row is
+     marked by an accent bar and a wash rather than a border, so nothing shifts
+     as the selection moves. */
+  #runlist{border-top:1px solid var(--line);margin-top:4px}
+  #runlist .run-row{display:flex;align-items:baseline;gap:9px;padding:7px 6px;
+       font-size:12.5px;color:var(--ink-2);border-bottom:1px solid var(--line);
+       cursor:pointer;user-select:none;
+       transition:background .12s ease,color .12s ease}
+  #runlist .run-row:hover{background:rgba(255,255,255,.045);color:var(--ink)}
+  #runlist .run-row.sel{background:rgba(57,135,229,.14);color:var(--ink);
+       box-shadow:inset 2px 0 0 var(--accent)}
+  #runlist .rr-label{flex:1;min-width:0}
+  #runlist .rr-best{color:var(--warning)}
+  #runlist .run-row.fail{color:var(--ink-3)}
+  #runlist .rr-fail{color:var(--v-fail);font-size:10px;letter-spacing:.07em;
+       text-transform:uppercase}
+  .rl-hint{margin:8px 0 0;font-size:10px;letter-spacing:.07em;
+           text-transform:uppercase;color:var(--ink-3)}
+
+  /* ---- a run's verdicts (js/verdicts.js) -------------------------------- */
+  /* Scored by whoever ran it, never here: a compact glyph strip, and the same
+     list as a table showing the value per property. The table is a measurement
+     list like the .kv rows above -- property left, figure ranged right in the
+     mono face -- with the verdict glyph between them.
+     Unscoped, because both appear in two places: on the switcher's rows and
+     under it for a set of runs, and in the report column itself for a page
+     showing a single one. */
+  .rr-verdicts{display:flex;gap:1px;flex-shrink:0;
+       font-family:var(--font-mono)}
+  .rv{width:14px;text-align:center;font-size:12px;display:inline-block}
+  .rv.rv-pass{color:var(--v-pass)}
+  .rv.rv-warn{color:var(--v-warn)}
+  .rv.rv-fail{color:var(--v-fail)}
+  .rv.rv-none{color:var(--v-none)}
+  .rv-detail{margin:10px 0 2px}
+  .rv-table{width:100%;border-collapse:collapse;font-size:12px}
+  .rv-table td{padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .rv-table .rv-k{color:var(--ink-3);white-space:nowrap}
+  .rv-table .rv-g{width:1.6em;text-align:center;font-family:var(--font-mono)}
+  .rv-table .rv-v{text-align:right;font-family:var(--font-mono);
+       font-size:11.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .rv-table tr.rv-pass .rv-g{color:var(--v-pass)}
+  .rv-table tr.rv-warn .rv-g{color:var(--v-warn)}
+  .rv-table tr.rv-fail .rv-g{color:var(--v-fail)}
+  .rv-table tr.rv-none .rv-k,.rv-table tr.rv-none .rv-v{color:var(--ink-3)}

@@ -1,0 +1,28 @@
+# Line endings.
+#
+# The tree is LF everywhere -- in the repo and in the working copy. Windows-side
+# editors kept rewriting files as CRLF, which surfaced as whole-file diffs on an
+# otherwise untouched checkout. `text=auto` strips CR on the way into a commit
+# and `eol=lf` writes LF back out on checkout, so neither side can reintroduce
+# the churn regardless of a given clone's core.autocrlf.
+* text=auto eol=lf
+
+# Batch files are the one exception to the LF rule. cmd.exe parses them line by
+# line as it executes, and a stray LF-only file can break the moment a label or
+# a multi-line block is involved -- so these check out CRLF on every platform.
+# The tree has none today (the scripted installers were dropped for the KiCad
+# add-on package, which is applied by KiCad and runs nothing); the rule stays so
+# that adding one cannot quietly get it wrong.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets -- never rewrite their bytes.
+*.png binary
+*.exe binary
+
+# The Linux solver, which has no suffix for the rule above to match. It is
+# untracked in this repo (see .gitignore) and committed in the public one, and
+# both check out through this file -- so it is named here rather than left to
+# `text=auto`'s content sniffing, which would almost certainly call an ELF
+# binary and needs to be right every time, not almost.
+binaries/monopole binary

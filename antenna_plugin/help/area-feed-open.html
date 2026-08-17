@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!-- Advisory guide for the "area-feed-open" warning (markers.area_checks,
+     check 4). Styled by antenna_plugin/assets/palette.css + help_theme.css,
+     linked relative to this file: the help viewer loads the guide from the
+     install tree, where those sheets are siblings, so nothing is templated or
+     copied at display time. Keep it plain HTML -- no module scripts, no CDN,
+     no network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antenna Designer help — Feed edge has no ground</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Feed edge has no ground</h1>
+<p class="lead">There is no copper on the feed layer just outside the
+<strong>feed edge</strong> of the antenna area — the edge the feed triangle
+sits on. The feed port drives the antenna <em>against ground</em>, so it needs a
+ground pour to reference right there. This is a warning, not a blocker.</p>
+
+<h2>Why it matters</h2>
+<p>The simulator runs a short stub out through the feed edge to reach the ground
+pour, and the port measures the antenna's impedance <em>relative to</em> that
+pour. With no copper adjacent to the feed edge (for example, the feed edge flush
+with the board outline, or the pour set back too far), the port has nothing to
+reference and the simulated impedance is meaningless.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>In the PCB editor, move the area marker (<span class="path">M</span>) so
+      its feed edge sits <strong>against the ground pour</strong> — the copper
+      the antenna will feed from.</li>
+  <li>Or rotate it (<span class="path">R</span>) so the feed triangle points in
+      from the grounded side rather than off the board.</li>
+  <li>If the pour simply doesn't reach the feed edge yet, extend it (or its
+      keep-out) up to the edge and re-pour.</li>
+</ol>
+
+<div class="note"><strong>Why it's only a warning:</strong> the area rectangle
+is a hint, not the antenna — you may have a ground reference the checker can't
+see, or be placing the pour next. The check looks a couple of millimetres
+outside the feed edge on the feed layer; a clear result there is worth a second
+look, not proof of a mistake.</div>
+</main>
+</body>
+</html>

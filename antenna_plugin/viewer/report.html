@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FDTD Antenna Report</title>
+<link rel="stylesheet" href="css/theme.css">
+<style>
+  body{display:flex;height:100vh;overflow:hidden}
+  #view3d{flex:1;position:relative;min-width:0}
+  /* A vignette over the 3D canvas: it sinks the viewport's corners so the
+     model reads as lit from within the page rather than pasted onto it.
+     Click-through, so the orbit controls never see it. */
+  #view3d::after{content:'';position:absolute;inset:0;pointer-events:none;
+    box-shadow:inset 0 0 140px rgba(0,0,0,.6)}
+  #side{width:420px;padding:0 18px 48px;overflow-y:auto;background:var(--rail);
+        border-left:1px solid var(--line);scrollbar-width:thin;
+        scrollbar-color:var(--line) transparent}
+  #side::-webkit-scrollbar{width:9px}
+  #side::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px;
+        border:3px solid var(--rail)}
+  /* The title stays put while the column scrolls under it -- the reader is
+     often deep in the panels and the page has no other chrome. */
+  #railtop{position:sticky;top:0;z-index:2;background:var(--rail);
+           padding:14px 0 9px;border-bottom:1px solid var(--line)}
+  #railtop h1{margin:0}
+  /* Colorbars: a ramp with a hairline ring rather than a boxed border, and
+     mono end labels, so they read as part of the same instrument as the
+     plots in the column. The z-index on every readout in the viewport lifts
+     it clear of the vignette, which is #view3d's last child and would
+     otherwise darken exactly the corners they sit in. */
+  #colorbar,#icbar,#jcbar{position:absolute;right:16px;width:12px;z-index:1;
+    border-radius:3px;box-shadow:0 0 0 1px rgba(255,255,255,.16)}
+  #colorbar{top:16px;height:220px}
+  #icbar,#jcbar{bottom:16px;height:100px}
+  #cbmax,#cbmin,#icbarmax,#icbarmin,#jcbarmax,#jcbarmin{position:absolute;
+    right:34px;z-index:1;font-family:var(--font-mono);font-size:10px;
+    color:var(--ink-3);font-variant-numeric:tabular-nums}
+  #cbmax{top:12px}
+  #cbmin{top:226px}
+  #icbarmax,#jcbarmax{bottom:106px}
+  #icbarmin,#jcbarmin{bottom:12px}
+  #cbtitle,#icbartitle,#jcbartitle{position:absolute;right:34px;z-index:1;
+    writing-mode:vertical-rl;transform:rotate(180deg);
+    display:flex;align-items:center;justify-content:center;font-size:9.5px;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+    white-space:nowrap}
+  #cbtitle{top:16px;height:220px}
+  #icbartitle,#jcbartitle{bottom:16px;height:100px}
+  #axislegend{position:absolute;left:16px;bottom:14px;z-index:1;
+    font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+  #axislegend b{font-weight:500}
+  .ax-x{color:var(--ax-x)}
+  .ax-y{color:var(--ax-y)}
+  .ax-z{color:var(--ax-z)}
+  #runline{margin:10px 0 2px}
+  /* The Smith chart is square by construction, so it takes its height from
+     its own width rather than the plots' fixed 240 px band. */
+  #smith{height:auto;aspect-ratio:1/1}
+  #smithout{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);
+            font-variant-numeric:tabular-nums;min-height:2.6em;margin:7px 0 2px}
+  /* Group label: a rule across the column naming the run of panels under
+     it, quieter than the panels' own headings so it reads as a divider. */
+  .grp{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+       color:var(--ink-3);border-top:1px solid var(--line);
+       margin:28px 0 0;padding-top:9px}
+  .grp+h2{margin-top:10px}
+  /* Rows of view controls under a panel: same rhythm as a toggle row. */
+  .ctlrow{display:flex;align-items:center;gap:9px;margin-top:8px;
+          font-size:12px;color:var(--ink-3)}
+  .ctlrow input[type=range]{flex:1}
+  .ctlrow .n{font-family:var(--font-mono);color:var(--ink-2);min-width:3.2em;
+             text-align:right;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div id="view3d">
+  <div id="colorbar"></div><div id="cbmax"></div><div id="cbmin"></div>
+  <div id="icbar" style="display:none"></div><div id="icbarmax" style="display:none"></div><div id="icbarmin" style="display:none"></div>
+  <div id="jcbar" style="display:none"></div><div id="jcbarmax" style="display:none"></div><div id="jcbarmin" style="display:none"></div>
+  <div id="cbtitle">Directivity</div>
+  <div id="icbartitle" style="display:none">Wire |I|</div>
+  <div id="jcbartitle" style="display:none">Sheet |J<sub>s</sub>|</div>
+  <div id="axislegend">
+    <b class="ax-x">x</b> <b class="ax-y">y</b> <b class="ax-z">z</b>
+    &nbsp;&middot;&nbsp; left-drag rotate &middot; wheel-drag pan &middot; scroll zoom
+  </div>
+</div>
+<!-- The column reads top to bottom as four groups, each under a .grp label:
+     what the port sees (the one swept quantity in its four views -- the two
+     impedance views, Z(f) and its locus, first, then the two match views),
+     what the antenna radiates (the far field and its figures of merit), the
+     current on the conductors with the geometry carrying it, and last the
+     controls for the 3D view. A group whose panels are all hidden -- no wire
+     current on a PCB, no copper layers on a wire -- drops its label with
+     them; see the .grp pass at the end of the script. -->
+<div id="side">
+  <div id="railtop"><h1>FDTD Antenna Report</h1></div>
+  <!-- Several runs in one page (?scan=<manifest>): what the set is, and the
+       list that picks the one drawn below. Both stay hidden on a page drawing
+       the single dump beside it; js/runs.js fills and shows them. -->
+  <div class="info" id="scanline" style="display:none"></div>
+  <div id="runswitch" style="display:none">
+    <h2>Runs</h2>
+    <div id="runlist"></div>
+    <div class="rl-hint">click a row &middot; &larr;/&rarr; step</div>
+    <div class="rv-detail" id="rundetail"></div>
+  </div>
+  <div class="metrics" id="summary"></div>
+  <div class="info" id="summarymsg"></div>
+  <div class="info" id="runline"></div>
+  <!-- How this run measured up against the target it was designed for, when
+       whoever ran it said what that was (js/verdicts.js: the verdicts are
+       scored there, never here). Hidden on a run that carries none -- and on
+       a page showing a SET of runs, where the switcher above is already
+       showing the selected one's beside its row. -->
+  <div id="verdicts" style="display:none">
+    <h2>Design target</h2>
+    <div class="info" id="verdictline"></div>
+    <div class="rv-detail" id="verdicttable"></div>
+  </div>
+
+  <!-- Everything the selected run draws. It goes away as a block when that
+       run has nothing to show, so no group label is left standing over a gap. -->
+  <div id="panels">
+  <div class="grp">Port match</div>
+  <h2>Input impedance</h2>
+  <canvas id="zplot" class="plot"></canvas>
+  <h2>Smith chart</h2>
+  <canvas id="smith" class="plot"></canvas>
+  <div class="info" id="smithout"></div>
+  <div class="info">Reflection
+  coefficient over the swept band, normalized to the port reference. The line
+  darkens toward the low end of the sweep (see the frequency key), the ring
+  marks the pattern frequency, and the shaded disc is where VSWR &le; 2.
+  Hovering it — or any other frequency panel — reads all of them out at that
+  frequency.</div>
+  <h2>Return loss</h2>
+  <canvas id="splot" class="plot"></canvas>
+  <h2>VSWR</h2>
+  <canvas id="vswr" class="plot"></canvas>
+
+  <div class="grp">Radiation</div>
+  <h2>Antenna metrics</h2>
+  <div class="info" id="metrics"></div>
+  <h2>Principal planes</h2>
+  <canvas id="planes" class="plot"></canvas>
+  <div id="polsec" style="display:none">
+    <h2>Polarization ellipse</h2>
+    <canvas id="polplot" class="plot"></canvas>
+    <div class="info">Path traced by the far-zone E vector over one
+    carrier period at the beam peak, in the (θ, φ) plane with
+    propagation out of the page; the arrow shows the rotation sense
+    (right-hand = θ toward φ).</div>
+  </div>
+
+  <div class="grp">Current &amp; geometry</div>
+  <div id="isec" style="display:none">
+    <h2>Current distribution</h2>
+    <canvas id="iplot" class="plot"></canvas>
+    <div class="info">|I| along the wire at the pattern frequency,
+    normalized to its peak; the thick 3D wire overlay uses the same
+    color ramp (red = peak).</div>
+  </div>
+  <div id="layersec" style="display:none">
+    <h2>Metal layers</h2>
+    <div class="info" style="margin-bottom:8px">Toggle each
+    copper layer on or off. Each layer is drawn as its |J<sub>s</sub>| surface
+    current at the pattern frequency (30 dB range below the peak, red =
+    peak).</div>
+    <label class="togglerow">
+      <input id="subToggle" type="checkbox" checked>
+      <span>Show substrate</span>
+    </label>
+    <div id="layerToggles"></div>
+  </div>
+
+  <div class="grp">3D view</div>
+  <h2>3D pattern</h2>
+  <div class="info">Surface radius maps directivity linearly in dB over a
+  30 dB range below the peak; color uses the same scale. The antenna /
+  PCB model is drawn about the feed point (the pattern center) and shows
+  orientation only (not to pattern scale).</div>
+  <label class="togglerow" style="margin-top:8px">
+    <input id="patToggle" type="checkbox" checked>
+    <span>Show 3D pattern</span>
+  </label>
+  <div id="patColorRow" class="ctlrow" style="display:none">
+    <span>Color</span>
+    <label class="togglerow" style="margin:0;padding:4px 6px;gap:6px">
+      <input type="radio" name="patColor" value="dir" checked>directivity</label>
+    <label class="togglerow" style="margin:0;padding:4px 6px;gap:6px">
+      <input type="radio" name="patColor" value="pol">polarization</label>
+  </div>
+  <div class="ctlrow">
+    <span>Pattern size</span>
+    <input id="patScale" type="range" min="0.2" max="2" step="0.05" value="1">
+    <span id="patScaleVal" class="n">1.0&times;</span>
+  </div>
+  </div>
+<div class="credit">Generated by <a target="_blank" rel="noopener" href="https://github.com/admin-2026/kicad_ems_plugin_pub">kicad_ems_plugin</a><small>(right click to copy link)</small></div>
+</div>
+<script src="vendor/three.js"></script>
+<script src="js/dump.js"></script>
+<script src="js/pagekit.js"></script>
+<script src="js/verdicts.js"></script>
+<script src="js/runs.js"></script>
+<script src="js/plot.js"></script>
+<script src="js/smith.js"></script>
+<script src="js/board3d.js"></script>
+<script src="js/budget.js"></script>
+<script src="js/report.js"></script>
+</body>
+</html>

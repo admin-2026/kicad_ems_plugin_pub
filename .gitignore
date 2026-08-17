@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+.venv/
+venv/
+env/
+
+# Tooling / caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Machine-local make rules -- targets that are true of one machine, not of the
+# project. The Makefile picks the file up if it is there and does not miss it
+# when it isn't.
+Makefile.local
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# KiCad backups / autosaves (in case boards live alongside the plugin)
+*-bak
+*.bak
+*.kicad_pcb-bak
+_autosave-*
+fp-info-cache
+
+ems/
+.crews-mounts
+
+# Simulation inputs/outputs the plugin writes beside a board project
+simulation/
+
+examples/
+
+# Assistant notes -- local to whoever works in this checkout.
+.claude/

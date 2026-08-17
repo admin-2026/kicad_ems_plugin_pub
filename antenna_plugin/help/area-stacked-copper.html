@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!-- Advisory guide for the "area-stacked-copper" warning (markers.area_checks,
+     check 5). Styled by antenna_plugin/assets/palette.css + help_theme.css,
+     linked relative to this file: the help viewer loads the guide from the
+     install tree, where those sheets are siblings, so nothing is templated or
+     copied at display time. Keep it plain HTML -- no module scripts, no CDN,
+     no network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antenna Designer help — Copper stacked over the area</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Copper stacked over the area</h1>
+<p class="lead">Another copper layer carries copper directly over or under the
+antenna area. The antenna sits on the feed layer; a plane on a layer stacked
+behind it detunes or kills it. This is a warning, not a blocker.</p>
+
+<h2>Why it matters</h2>
+<p>A monopole needs open space on the side it radiates into — including the
+layers above and below it in the stackup, on the far side of the board. A ground
+pour (or any large copper) there behaves like a shield close behind the
+radiator: it shifts the resonant frequency and can suppress radiation
+altogether. The simulation models the real stackup, so the built board and the
+simulation will at least agree — but both may be detuned.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Add a <strong>keep-out</strong> over the antenna area on the other copper
+      layer(s) named in the warning, and re-pour any zones there.</li>
+  <li>Or move the antenna area (<span class="path">M</span>) to a part of the
+      board with no plane behind it — typically out past the edge of the ground
+      pour.</li>
+  <li>On a multi-layer board, confirm the layer stacked behind the feed layer is
+      the one you intend to keep clear.</li>
+</ol>
+
+<div class="note"><strong>Why it's only a warning:</strong> the area rectangle
+is a hint, not the antenna, and the copper behind it may be intentional (or
+clear where the trace actually runs). The check tests the rectangle against
+every other copper layer — a conservative overlap that's worth confirming.</div>
+</main>
+</body>
+</html>

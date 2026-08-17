@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!-- Advisory guide for the "area-radiating-shielded" warning
+     (markers.area_checks, check 4). Styled by
+     antenna_plugin/assets/palette.css + help_theme.css, linked relative to
+     this file: the help viewer loads the guide from the install tree, where
+     those sheets are siblings, so nothing is templated or copied at display
+     time. Keep it plain HTML -- no module scripts, no CDN, no network. A
+     stylesheet link resolves fine from a file:// page; ES-module fetches are
+     what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antenna Designer help — Radiating edge is shielded</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Radiating edge is shielded</h1>
+<p class="lead">There is copper on the feed layer just outside the
+<strong>radiating edge</strong> — the edge opposite the feed. The monopole
+radiates off that side, so it should face open space or the board edge. Copper
+behind it acts as a shield. This is a warning, not a blocker.</p>
+
+<h2>Why it matters</h2>
+<p>A monopole works by radiating into free space off its far end. When that end
+is backed by metal (a ground pour, another trace, a nearby plane), the field is
+reflected and absorbed instead of radiated: the antenna can still look
+reasonable in an isolated simulation yet fail to work on the built board. The
+extreme case is an area boxed in by copper on every edge — nowhere to
+radiate.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Move the area marker (<span class="path">M</span>) so its radiating edge
+      sits at the <strong>board edge</strong>, with open space beyond it.</li>
+  <li>Or rotate it (<span class="path">R</span>) so the feed enters from the
+      copper side and the antenna points <em>away</em> from the pour.</li>
+  <li>Pull back or cut the copper behind the radiating edge (a keep-out on the
+      pour over the antenna area keeps it clear).</li>
+</ol>
+
+<div class="note"><strong>Why it's only a warning:</strong> the area rectangle
+is a conservative superset of where the trace actually goes, and the copper the
+checker sees may be intentional or far enough not to matter. The check probes a
+couple of millimetres outside the radiating edge on the feed layer — a reason to
+look, not a verdict.</div>
+</main>
+</body>
+</html>

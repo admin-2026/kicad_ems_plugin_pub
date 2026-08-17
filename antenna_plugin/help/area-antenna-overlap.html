@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<!-- Advisory guide for the "area-antenna-overlap" warning
+     (markers.area_checks, checks 2+3). Styled by
+     antenna_plugin/assets/palette.css + help_theme.css, linked relative to
+     this file: the help viewer loads the guide from the install tree, where
+     those sheets are siblings, so nothing is templated or copied at display
+     time. Keep it plain HTML -- no module scripts, no CDN, no network. A
+     stylesheet link resolves fine from a file:// page; ES-module fetches are
+     what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Antenna Designer help — Antenna overlaps copper in the area</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Antenna overlaps copper in the area</h1>
+<p class="lead">The antenna's own copper — the candidates the scan you
+started splices, or the one being placed — lands on metal that already exists
+on the feed layer inside the area rectangle. The warning names the spot in
+board coordinates, so you can go and look at it in the editor. This is a
+warning, not a blocker.</p>
+
+<h2>Why it matters</h2>
+<p>The scan splices each candidate's copper into the feed layer's plotted
+gerbers and simulates the result. That splice assumes the copper lands on
+empty board: existing metal under the antenna — a track, a zone fill, a pad,
+or an antenna footprint placed by an earlier run — simply merges with the
+candidate. Nothing errors; the simulated antenna is a different shape from the
+intended one, and every number that comes back is quietly wrong. A placed
+footprint whose copper crosses existing metal shorts to it on the fabricated
+board the same way.</p>
+
+<h2>What is checked — and what deliberately isn't</h2>
+<p>Only the antenna's copper <strong>inside</strong> the area rectangle is
+tested, against the copper layer the feed uses. Outside the area the feed stub
+and a ground short are <em>supposed</em> to overlap the surrounding ground
+pour — that is how the port references ground — so nothing outside the
+rectangle is judged, and a pour flush with the area's edge does not count as
+inside it.</p>
+<p>The same goes for the first millimetre <em>inside</em> the feed edge: the
+antenna's pins sit exactly on that edge, and the area is normally placed
+hanging slightly over the ground pour so they reach it. Copper that close to
+the feed edge is the connection, not an obstruction, and is not judged —
+everything deeper is (a pour flooding the whole area still warns).</p>
+<p>And nothing is checked until you press <strong>Start scan</strong> or
+<strong>Generate grids</strong>: that is when copper is spliced into the feed
+layer, so that is when there is something to overlap. Sliding the preview
+around beforehand cannot raise this warning. Once a pass has started, the
+check covers <em>every</em> candidate of the sweep — they reach differently
+far, so a clear preview never meant a clear scan — and it is re-run against
+the live board, so it clears as soon as you move the copper out of the
+way.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Move the area marker (<span class="path">M</span>) so the antenna's
+      trace runs over empty board on the feed layer.</li>
+  <li>Or clear the copper it crosses: reroute the track, add a keep-out to the
+      zone and re-pour, or delete a leftover antenna footprint from an earlier
+      wizard run (the preview drawn on the marker itself is fine — it is
+      ignored, and the scan strips it before plotting).</li>
+  <li>Or shrink/reshape the sweep (the scan sliders and its min/max) so the
+      candidates stay clear of the metal, and scan again.</li>
+</ol>
+
+<div class="note"><strong>Why it's only a warning:</strong> you may know
+better — the overlapping metal might be exactly the copper you intend the
+antenna to connect to, or something you are about to remove. The warning
+describes the pass you last started; it stays until the next one, so after
+clearing the copper you will see it go on the next banner refresh.</div>
+</main>
+</body>
+</html>
