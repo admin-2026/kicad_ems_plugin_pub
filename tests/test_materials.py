@@ -1,21 +1,12 @@
 """Unit tests for antenna_plugin.materials.db (pure, no KiCad).
 
-The plugin package's __init__ imports pcbnew, so load the module by path to
-keep these runnable off-KiCad:  python3 tests/test_materials.py
+The plugin package's __init__ imports pcbnew, so it is loaded through the
+bare package to stay runnable off-KiCad:  python3 tests/test_materials.py
 """
 
-import importlib.util
-import pathlib
+from bare_package import load
 
-_SRC = (
-    pathlib.Path(__file__).resolve().parents[1]
-    / "antenna_plugin"
-    / "materials"
-    / "db.py"
-)
-_spec = importlib.util.spec_from_file_location("materials", _SRC)
-materials = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(materials)
+materials = load("emkit.materials.db")
 Materials = materials.Materials
 
 

@@ -31,7 +31,7 @@ whole geometry stack stays unit-testable off KiCad (tests/test_geometry.py).
 import math
 from typing import NamedTuple
 
-from ..markers import markergeom
+from ..emkit.markers import markergeom
 
 # Copper drawn past the feed gap on the ground side, so the port's source
 # side lands on the board's ground pour even when the pour keeps a small
@@ -50,17 +50,17 @@ BORDER_MM = 0.5
 # centerline-to-centerline pitch.
 TRACK_GAP_MM = 0.25
 
-# How deep a newborn crossing has to be before the meander is drawn as an even
-# comb again, as a fraction of the track pitch (see meander_legs). The room a
-# new fold needs has to come off the folds already drawn, and that hand-over
-# is packed into this first sliver of the new fold's depth -- 0.25 mm of it at
-# a 1 mm track, a quarter of the track's own width, so the run is an even comb
-# in ~98% of the candidates of a sweep and the hand-over happens while the new
-# fold is nothing but a whisker in the corner.
+# How far across the band a newborn crossing has to reach before the meander is
+# drawn as an even comb again, as a fraction of the track pitch (see
+# meander_legs). The room a new fold needs has to come off the folds already
+# drawn, and that hand-over is packed into this first sliver of the new fold's
+# reach -- 0.25 mm of it at a 1 mm track, a quarter of the track's own width,
+# so the run is an even comb in ~98% of the candidates of a sweep and the
+# hand-over happens while the new fold is nothing but a whisker in the corner.
 #
 # It is the one number trading the two things that cannot both be had (see
 # meander_legs): 0 draws every candidate as a perfectly even comb, at the cost
-# of handing the room over in one step -- which moves a full-depth strand a
+# of handing the room over in one step -- which moves a full-length strand a
 # whole leg width (14.5 mm at the first fold boundary of a 29 mm run) between
 # two neighbouring candidates of a sweep. Larger spreads that hand-over over
 # more of the sweep, at the cost of more candidates drawn with the newest fold
@@ -124,10 +124,10 @@ class Geometry(NamedTuple):
         """Every path's centerline as board-frame segment pairs (KiCad mm):
         consecutive points rotated by ``rot_deg`` about ``pivot`` -- the step
         that puts a geometry solved in a rotated area marker's derotated frame
-        back onto the board (identity at 0). The wizard draws these into the
-        placed area marker on a copper layer as its live antenna preview,
-        stroked at the trace width so they read as the copper the footprint
-        would place."""
+        back onto the board (identity at 0). The wizard draws these onto a
+        copper layer as its live antenna preview (markers.preview), stroked at
+        the trace width so they read as the copper the footprint would
+        place."""
         segments = []
         for path in self.paths:
             pts = [markergeom.rotate_pt(p, rot_deg, pivot) for p in path.points]
@@ -214,19 +214,31 @@ def edge_frame(area, edge, frac, half):
 class Meander(NamedTuple):
     """One solved serpentine run (see ``meander_run``): the ``points`` after
     the run's start, how many times it crosses the band (``crossings``), how
-    deep a full crossing runs (``depth`` -- the whole band it was given, bar
-    the one layout that has no full crossing), how deep the last one runs
-    (``tail`` -- equal to ``depth`` when the run ends on a full crossing, and
-    as little as a hair when the length has only just asked for another) and
-    how far it travels along the tangent overall (``span`` -- the whole room it
-    was given). A straight run has no crossings, and no depth or tail with
-    it."""
+    far a full crossing reaches across it (``cross`` -- the whole band it was
+    given, bar the one layout that has no full crossing), how far the last one
+    reaches (``tail`` -- equal to ``cross`` when the run ends on a full
+    crossing, and as little as a hair when the length has only just asked for
+    another) and how far it travels along the tangent overall (``advance`` --
+    the whole run it was given), plus how far the *first* one reaches when it
+    is a short one (``lead`` -- 0 when the run starts at the edge of its band,
+    and 0 again when the run is over before that first crossing finishes, in
+    which case ``tail`` is the one that covers it). A straight run has no
+    crossings, and no ``cross`` or ``tail`` with it.
+
+    The two axes are named for what the run *does* along them rather than for
+    where the area's borders are, because a design chooses which of its own
+    directions ``tangent`` and ``inward`` point at, and the two that meander
+    choose oppositely: an inverted-F crosses the depth behind its arm and
+    advances along the feed edge, a meandered monopole crosses the width and
+    advances away from that edge. A design's own words for the two ("fold
+    depth", "leg spacing") are its metrics' business, not this module's."""
 
     points: list
     crossings: int
-    depth: float
+    cross: float
     tail: float
-    span: float
+    advance: float
+    lead: float = 0.0
 
     @property
     def folds(self):
@@ -235,6 +247,24 @@ class Meander(NamedTuple):
         teeth cannot. A single crossing is no fold at all: the run steps off
         the near side and travels at that level."""
         return self.crossings // 2
+
+    def metrics(self, cross_key, advance_key):
+        """The run's numbers for a design's ``metrics`` dict, with the two
+        axes under **that design's own words** for them: the counts and the
+        tail as they are, and ``cross`` / ``advance`` keyed by ``cross_key``
+        and ``advance_key`` -- an inverted-F's fold depth and arm span, a
+        meandered monopole's leg length and stack depth. The engine has one
+        serpentine and no opinion about which of those a caller drew, so this
+        hands the numbers over rather than naming them (see the class
+        docstring); a design adds its own keys to what comes back."""
+        return {
+            "folds": self.folds,
+            "crossings": self.crossings,
+            cross_key: self.cross,
+            "tail_mm": self.tail,
+            advance_key: self.advance,
+            "lead_mm": self.lead,
+        }
 
 
 def step(point, direction, distance):
@@ -251,94 +281,118 @@ def path_length(points):
     return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
 
 
-def meander_run(start, tangent, inward, length_mm, room_mm, depth_mm, pitch_mm):
+def meander_run(
+    start, tangent, inward, length_mm, advance_mm, cross_mm, pitch_mm, lead_mm=None
+):
     """A serpentine run of exactly ``length_mm`` of centerline, starting at
     ``start`` and travelling along ``tangent``, folded ``inward`` when it is
-    longer than the ``room_mm`` of straight travel available.
+    longer than the ``advance_mm`` of straight travel available.
 
     Returns a :class:`Meander`. The length is met exactly, never approximated.
 
-    The run is a square wave across the band: ``crossings`` legs of ``depth``,
+    The run is a square wave across the band: ``crossings`` legs of ``cross``,
     alternating inward and outward, with a forward leg between consecutive
-    ones. It climbs off ``start`` before travelling at all, so it rides the far
-    side of the band from the first leg on and comes back down to ``start``'s
+    ones. It crosses off ``start`` before travelling at all, so it rides the
+    far side of the band from the first leg on and comes back to ``start``'s
     level at every full crossing.
 
     A scan needs everything but the length itself held, and two things would
-    otherwise move with it. One is the **span**: a run that travels less far
-    than its ``room_mm`` is a narrower antenna. The other is the crossings'
-    **depth**: folds that stop short of the far border are a shallower one. A
-    sweep that let either move would compare candidates of different shapes and
-    read the difference as frequency. So neither gives here. The run keeps the
-    whole room, every full crossing runs the whole ``depth_mm`` band, and what
-    absorbs a length those two do not divide is the crossing **count** -- half
-    a fold at a time -- and the **last crossing** alone, which takes the
-    remainder (``tail``). The open tip therefore travels across the band as the
-    length grows, and the count ticks over when it arrives; every other
-    candidate in the sweep is the same antenna with its tip somewhere else.
+    otherwise move with it. One is the **advance**: a run that travels less far
+    than its ``advance_mm`` is a smaller antenna along that axis. The other is
+    the crossings' **reach**: folds that stop short of the far side of the band
+    are a smaller one across it. A sweep that let either move would compare
+    candidates of different shapes and read the difference as frequency. So
+    neither gives here. The run keeps the whole advance, every full crossing
+    reaches the whole ``cross_mm`` band, and what absorbs a length those two do
+    not divide is the crossing **count** -- half a fold at a time -- and the
+    **last crossing** alone, which takes the remainder (``tail``). The open tip
+    therefore travels across the band as the length grows, and the count ticks
+    over when it arrives; every other candidate in the sweep is the same
+    antenna with its tip somewhere else.
 
-    The run is drawn **evenly** -- every leg ``span / (crossings - 1)``, so the
-    folds are one regular comb -- but it cannot be drawn evenly at the instant
-    a crossing is added, or the shape would jerk: every fold would shuffle
-    sideways at once as the divisor changed, and a full-depth strand of copper
-    would land a whole leg width away between two neighbouring candidates. So a
-    new crossing is **peeled off the far corner** and turned out into place
-    (``meander_legs``): it opens from nothing at the run's tip, widening as it
-    deepens, while the folds behind it close up to pay for it. It is a fold
-    like the others while still a whisker deep, and the run is even again for
-    the rest of the cycle -- all but a sliver of the sweep. Every point moves
-    with the length and only with the length, so consecutive candidates really
-    are the same antenna slightly redrawn.
+    The run is drawn **evenly** -- every leg ``advance / (crossings - 1)``, so
+    the folds are one regular comb -- but it cannot be drawn evenly at the
+    instant a crossing is added, or the shape would jerk: every fold would
+    shuffle sideways at once as the divisor changed, and a full-depth strand of
+    copper would land a whole leg width away between two neighbouring
+    candidates. So a new crossing is **peeled off the far corner** and turned
+    out into place (``meander_legs``): it opens from nothing at the run's tip,
+    widening as it reaches further, while the folds behind it close up to pay
+    for it. It is a fold like the others while still a whisker across, and the
+    run is even again for the rest of the cycle -- all but a sliver of the
+    sweep. Every point moves with the length and only with the length, so
+    consecutive candidates really are the same antenna slightly redrawn.
 
     That whisker is the one place a fold is not like its neighbours, and it is
-    also where the tail is free to be shallower than the track is wide: a
-    crossing that shallow is a dimple inside the corner it grows out of, and
-    buys less length than it measures. It is the cheapest of the three to give
-    -- never deeper than a track width, gone again as the length grows through
-    the window, and it leaves the rest of the antenna exactly where its
-    neighbours have it.
+    also where the tail is free to be shorter than the track is wide: a
+    crossing that short is a dimple inside the corner it grows out of, and buys
+    less length than it measures. It is the cheapest of the three to give --
+    never longer than a track width, gone again as the length grows through the
+    window, and it leaves the rest of the antenna exactly where its neighbours
+    have it.
 
-    The one run whose far side is not the far border is the one that cannot
-    reach it: a length less than a band over the room has a single crossing,
-    and simply steps up by what it has spare and travels at that level. There
-    is no layout that reaches the border with less -- climbing the band costs
-    the whole band -- so this is as deep as such a run gets.
+    The one run whose far side is not the band's is the one that cannot reach
+    it: a length less than a band over the advance has a single crossing, and
+    simply steps across by what it has spare and travels at that level. There
+    is no layout that reaches the far side with less -- crossing the band costs
+    the whole band -- so this is as far across as such a run gets.
 
     ``pitch_mm`` is the smallest centerline spacing two parallel runs may have
     (the track width plus a clearance): the legs between the crossings each
     need one, and so does the band itself -- a band narrower than that would
-    fold the run back inside its own width and buy no length. Raises ValueError
-    with guidance when the length cannot be folded into the room available.
+    fold the run back inside its own width and buy no length.
+
+    ``lead_mm`` is the first crossing's span, for a run that **enters its band
+    part way across** rather than at one edge of it -- a serpentine whose
+    crossings run parallel to the feed edge starts where the feed is, which is
+    wherever the user put the marker's triangle, so its first crossing reaches
+    the nearer border only and every one after it spans the whole band. None
+    (the default) starts with a full crossing, which is what a run entering at
+    the band's own edge does. A lead of nothing is the same thing -- but note
+    it also means the caller's ``inward`` is pointing the wrong way for that
+    layout, so the direction is the caller's to fix, not this function's.
+
+    Raises ValueError with guidance when the length cannot be folded into the
+    room available.
     """
-    crossings, depth, tail, span = meander_plan(
-        length_mm, room_mm, depth_mm, pitch_mm
+    crossings, cross, tail, advance, lead = meander_plan(
+        length_mm, advance_mm, cross_mm, pitch_mm, lead_mm
     )
     if not crossings:
-        # Rounded like the folded branch below: the span is a reported number
-        # (a design's metrics, the result table), and a straight run's is the
-        # length itself, float dust and all, unless it is cleaned here too.
+        # Rounded like the folded branch below: the advance is a reported
+        # number (a design's metrics, the result table), and a straight run's is
+        # the length itself, float dust and all, unless it is cleaned here too.
         return Meander(
             [step(start, tangent, length_mm)], 0, 0.0, 0.0, round(length_mm, 4)
         )
-    legs = meander_legs(crossings, tail, span, pitch_mm)
+    legs = meander_legs(crossings, tail, advance, pitch_mm)
     out = opposite(inward)
     points, p = [], start
     for i in range(crossings):
-        last = i == crossings - 1
-        p = step(p, inward if i % 2 == 0 else out, tail if last else depth)
+        # The last crossing takes the remainder; the first takes the lead when
+        # there is one and it isn't also the last (then the tail already is it).
+        reach = tail if i == crossings - 1 else (lead if i == 0 and lead else cross)
+        p = step(p, inward if i % 2 == 0 else out, reach)
         points.append(p)
         if i < len(legs):  # ... the last crossing of a folded run ends it
             p = step(p, tangent, legs[i])
             points.append(p)
-    return Meander(points, crossings, round(depth, 4), round(tail, 4), round(span, 4))
+    return Meander(
+        points,
+        crossings,
+        round(cross, 4),
+        round(tail, 4),
+        round(advance, 4),
+        round(lead, 4),
+    )
 
 
-def meander_plan(length_mm, room_mm, depth_mm, pitch_mm):
-    """The layout ``meander_run`` will walk: ``(crossings, depth, tail,
-    span)``, at full precision. The span is the whole room and the depth the
-    whole band; only the count and the tail answer to the length (see its
-    docstring). Zero crossings means the run is straight and the span is the
-    whole length.
+def meander_plan(length_mm, advance_mm, cross_mm, pitch_mm, lead_mm=None):
+    """The layout ``meander_run`` will walk: ``(crossings, cross, tail,
+    advance, lead)``, at full precision. The advance is the whole run available
+    and the cross the whole band; only the count and the tail answer to the
+    length (see its docstring). Zero crossings means the run is straight and the
+    advance is the whole length.
 
     Split out so the decision reads on its own -- and so the tests can check
     the arithmetic against an independent enumeration of the layouts an area
@@ -346,90 +400,107 @@ def meander_plan(length_mm, room_mm, depth_mm, pitch_mm):
     ``meander_run`` does."""
     if length_mm <= 0:
         raise ValueError("the meandered run must be longer than 0 mm")
-    if length_mm <= room_mm + 1e-9:
-        return 0, 0.0, 0.0, length_mm
+    if length_mm <= advance_mm + 1e-9:
+        return 0, 0.0, 0.0, length_mm, 0.0
 
-    across = length_mm - room_mm  # what the crossings have to supply
-    if depth_mm < pitch_mm:
+    across = length_mm - advance_mm  # what the crossings have to supply
+    if cross_mm < pitch_mm:
         raise ValueError(
-            f"a {length_mm:.1f} mm run does not fit the {room_mm:.1f} mm of "
-            f"room and the area is only {max(depth_mm, 0.0):.1f} mm deeper "
+            f"a {length_mm:.1f} mm run does not fit the {advance_mm:.1f} mm of "
+            f"room and the area is only {max(cross_mm, 0.0):.1f} mm deeper "
             "than the antenna -- too shallow to meander (grow the area or "
             "shorten the antenna)"
         )
-    # Neither the room nor the band gives, so the count is the only free
-    # variable: the fewest crossings that can supply `across` with none of them
-    # running past the far border, which are also the deepest ones.
-    crossings = max(1, math.ceil(across / depth_mm - 1e-9))
-    # Every crossing but the last runs the whole band -- a single one is no
+    lead = 0.0 if lead_mm is None else float(lead_mm)
+    if lead > cross_mm + 1e-9:
+        raise ValueError(
+            f"the run enters its band {lead:.1f} mm from the near side, which "
+            f"is more than the {cross_mm:.1f} mm band itself -- it would start "
+            "outside the area"
+        )
+    # A run entering at (or within float dust of) the band's edge has no lead
+    # at all: its first crossing is a full one like every other.
+    if lead <= 1e-9:
+        lead = 0.0
+    if lead and across <= lead + 1e-9:
+        # Over before the lead-in crossing finishes: that crossing is the run's
+        # only one, so it is the tail, and there is no separate lead to report.
+        return 1, round(across, 10), across, advance_mm, 0.0
+    # The lead is fixed by where the run entered; the crossings after it are the
+    # free variable. The fewest of them that can supply what is left, with none
+    # running past the far side of the band -- which are also the longest ones.
+    rest = across - lead
+    more = max(1, math.ceil(rest / cross_mm - 1e-9))
+    crossings = more + (1 if lead else 0)
+    # Every crossing but the last reaches the whole band -- a single one is no
     # fold at all, just the step a run this short can afford. The last takes
     # what is left over, which is anything from the whole band down to a hair.
-    depth = min(depth_mm, across)
-    tail = across - (crossings - 1) * depth
+    cross = min(cross_mm, rest)
+    tail = rest - (more - 1) * cross
     # One forward leg per gap between crossings -- one fewer than the crossings
     # (the same count, not the same thing) -- and each needs the track pitch.
-    if room_mm < (crossings - 1) * pitch_mm - 1e-9:
+    if advance_mm < (crossings - 1) * pitch_mm - 1e-9:
         raise ValueError(
             f"a {length_mm:.1f} mm run needs {crossings} crossing(s) of the "
-            f"band, which do not fit the {room_mm:.1f} mm of room at a "
+            f"band, which do not fit the {advance_mm:.1f} mm of room at a "
             f"{pitch_mm:.2f} mm track pitch (widen the area, narrow the "
             "track, or shorten the antenna)"
         )
-    return crossings, depth, tail, room_mm
+    return crossings, cross, tail, advance_mm, lead
 
 
-def meander_legs(crossings, tail, span, pitch):
-    """How a planned run shares its ``span`` out between its crossings: the
+def meander_legs(crossings, tail, advance, pitch):
+    """How a planned run shares its ``advance`` out between its crossings: the
     forward legs in walk order, one after every crossing but the last (and one
-    after the single crossing of a run that only steps up, which would
-    otherwise not travel at all). They always sum to the whole ``span``.
+    after the single crossing of a run that only steps across, which would
+    otherwise not travel at all). They always sum to the whole ``advance``.
 
     **Evenly, bar a whisker at the start of each fold.** The run wants to be
-    one regular comb of ``span / (c - 1)`` legs, and is drawn that way for all
-    but a sliver of every cycle -- but it cannot be drawn that way *through* a
-    fold boundary, and this is where that is paid for.
+    one regular comb of ``advance / (c - 1)`` legs, and is drawn that way for
+    all but a sliver of every cycle -- but it cannot be drawn that way *through*
+    a fold boundary, and this is where that is paid for.
 
     The forward legs are the one part of the run that buys no length: they sum
-    to ``span`` however they are shared out (the run keeps the area's whole
-    width, ``meander_run``), so all the length lives in the crossings' depth,
-    and the depth is the only clock a sweep has. That is what makes "widen the
-    new fold's leg first, then deepen it" impossible to draw: widening the leg
+    to ``advance`` however they are shared out (the run keeps the whole of it,
+    ``meander_run``), so all the length lives in the crossings' reach, and that
+    reach is the only clock a sweep has. That is what makes "widen the new
+    fold's leg first, then extend it" impossible to draw: widening the leg
     takes room off the other folds and adds nothing to the length, so it is not
     a stage a sweep can pass through -- it would have to happen at a single
     length, and every fold already drawn would jump sideways as it did
-    (``span / (c - 2)`` to ``span / (c - 1)``, a whole leg width, with a
-    full-depth strand of copper on the end of it).
+    (``advance / (c - 2)`` to ``advance / (c - 1)``, a whole leg width, with a
+    full-length strand of copper on the end of it).
 
     So the hand-over is hung off the only clock there is, and packed into as
     little of it as the drawing can stand. A new crossing starts from
-    **nothing at the far corner** and **turns out as it deepens**, reaching the
-    others' width once it is ``FOLD_TURNOUT_PITCHES`` of a ``pitch`` deep --
-    while it is still a whisker in the corner, and long before it is copper
-    worth the name. From there to the end of the cycle every leg is exactly
-    ``span / (c - 1)``.
+    **nothing at the far corner** and **turns out as it reaches further**,
+    reaching the others' width once it is ``FOLD_TURNOUT_PITCHES`` of a
+    ``pitch`` across -- while it is still a whisker in the corner, and long
+    before it is copper worth the name. From there to the end of the cycle
+    every leg is exactly ``advance / (c - 1)``.
 
     Writing ``g = min(1, tail / turnout)`` for how far the newborn one has
-    turned out, the settled legs run at ``span / (full + g)`` and the newborn
+    turned out, the settled legs run at ``advance / (full + g)`` and the newborn
     one takes what is left. The two ends of the turnout are what carry the run
     continuously across a fold boundary:
 
-    * ``g -> 0``: the settled legs share the whole span evenly, as they did
+    * ``g -> 0``: the settled legs share the whole advance evenly, as they did
       before the crossing appeared, and the newborn leg is nothing -- which is
       exactly the layout one fewer crossing ends on.
-    * ``g = 1``: every leg, newborn included, is ``span / (c - 1)`` -- the even
-      run, which is also the layout the *next* crossing is born out of.
+    * ``g = 1``: every leg, newborn included, is ``advance / (c - 1)`` -- the
+      even run, which is also the layout the *next* crossing is born out of.
 
     Between them every leg moves with the length and only with the length, so
     no point of the run ever jumps."""
     if crossings <= 2:
-        # Nothing to share: one crossing travels the whole span at its level,
-        # two hold the span between them however deep the second has grown.
-        return [span]
+        # Nothing to share: one crossing travels the whole advance at its
+        # level, two hold it between them however far the second has reached.
+        return [advance]
     full = crossings - 2  # the legs at the even width; + 1 turning out
     turnout = FOLD_TURNOUT_PITCHES * pitch
     g = 1.0 if tail >= turnout else tail / turnout
-    settled = span / (full + g)
-    return [settled] * full + [span - full * settled]
+    settled = advance / (full + g)
+    return [settled] * full + [advance - full * settled]
 
 
 # --------------------------------------------------------------------------- #

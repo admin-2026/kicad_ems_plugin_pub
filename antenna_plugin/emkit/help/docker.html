@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<!-- The container guide: the About page's Docker box opens it, and so does the
+     "docker-not-ready" row in the banner of every page that can start a run --
+     the simulate view's and each designer's (simulate.container_problems,
+     which names this file rather than one per problem -- there is one story
+     here and seven ways into it).
+     Styled by emkit/assets/palette.css + help_theme.css, linked relative to
+     this file: the viewer loads the guide from the install tree, where those
+     sheets are siblings, so nothing is templated or copied at display time.
+     Keep it plain HTML -- no module scripts, no CDN, no network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin help — Running the solver in a container</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Running the solver in a container</h1>
+
+<p class="lead">A simulation can run inside a Docker container instead of
+directly on your machine. The solver then sees one folder — the one this
+board's simulation writes into — and no network at all.</p>
+
+<h2>What Docker is</h2>
+
+<p>Docker runs a program inside a <em>container</em>: a packaged filesystem with
+its own copy of everything the program needs, and only the access to your
+machine that it is explicitly given. Nothing is installed into your system to
+run one, and nothing is left behind when it stops. The container here is built
+from a recipe this plugin ships, on your machine, and never leaves it.</p>
+
+<p>Docker itself is separate software and you install it once, from
+<a href="https://www.docker.com/">https://www.docker.com/</a> — Docker Desktop
+on macOS and Windows, Docker Engine on Linux. It is free for personal use and
+for small businesses; the site states the current terms.</p>
+
+<h2>Why you might want it</h2>
+
+<p>The image is a <strong>workbench</strong>: KiCad, this plugin, its command
+line and the solver, together in one place. Which makes the interesting use of
+it possible — putting an <strong>AI agent</strong> in there <em>with</em> them
+and letting it do the whole job inside. It reads the board, writes the
+settings, starts a run, reads the results and tries the next candidate, and at
+no point does it touch anything of yours except the one directory you
+mounted.</p>
+
+<p>An agent designing something is confidently wrong from time to time, and it
+is wrong while nobody is watching. Inside the container there is not much for
+that to cost: one directory is visible and writable, and your home directory,
+your other projects and the rest of the machine are simply not there to be
+reached. A mistake stops at the edge of the project instead of being found
+afterwards by reading what it did. The network is the one thing to decide for
+yourself — a solve this window starts has none at all, while an agent that has
+to reach its model does, so a container you start for one is as connected as
+you make it and no more.</p>
+
+<p>Ticking the box uses the same boundary one solve at a time: every run this
+window starts then goes through the container. It costs a one-off build
+(minutes, and a few hundred megabytes) and a little start-up time per run. The
+simulation runs at the same speed and computes exactly the same numbers.</p>
+
+<div class="note"><strong>On macOS it is not optional.</strong> No macOS build
+of the solver ships, so on a Mac every simulation runs in the container and the
+tick on the About page is shown ticked and greyed. Everything else — the
+window, the board, the markers, the results — runs on your Mac as usual.</div>
+
+<h2>Setting it up</h2>
+<ol>
+  <li><strong>Install Docker.</strong> Docker Desktop on macOS and Windows,
+      Docker Engine on Linux. The About page's Docker box says which of these
+      is missing, if any.</li>
+  <li><strong>Build the image</strong> with the <span class="path">Build
+      image</span> button. It installs KiCad inside the image, so it takes a
+      few minutes the first time; the log at the foot of the About page prints
+      what the engine is doing while it does it. The same button appears on the
+      banner under the form when a run is stopped because no image has been
+      built yet, and starts the same build from there. Once an image exists
+      that button is named <span class="path">Rebuild image</span> — it is one
+      button, named for what pressing it will do.</li>
+  <li><strong>Tick the box</strong> (already ticked on macOS). From then on,
+      runs started from this window <em>and</em> from the command line go
+      through the container.</li>
+</ol>
+
+<h2>Rebuild it after a plugin update</h2>
+
+<p>The image carries this plugin's own code, so an image built by an older
+release is not the right one for a newer install. The box reports that as
+<span class="path">stale</span>, and <span class="path">Rebuild image</span> is
+the answer. Rebuilding is also what to do if the KiCad inside the image is
+older than the KiCad you are running: an older KiCad cannot open a board a
+newer one saved, and the box reports that too.</p>
+
+<h2>What the box is telling you</h2>
+<table class="grid">
+  <tr><th>It says</th><th>What to do</th></tr>
+  <tr><td>Docker is not installed</td><td>Install Docker Desktop (macOS,
+      Windows) or Docker Engine (Linux).</td></tr>
+  <tr><td>The daemon is not answering</td><td>Start Docker Desktop and wait for
+      it to report that it is running; on Linux, start the service.</td></tr>
+  <tr><td>Permission denied</td><td>On Linux, add yourself to the
+      <span class="path">docker</span> group and log in again — a new terminal
+      alone does not pick that up.</td></tr>
+  <tr><td>No image yet</td><td>Press <span class="path">Build image</span>.</td></tr>
+  <tr><td>The image is from an older release</td><td>Press
+      <span class="path">Rebuild image</span>.</td></tr>
+  <tr><td>The image's KiCad is older than yours</td><td>Press
+      <span class="path">Rebuild image</span>. Until you do, it cannot read
+      boards this KiCad saves.</td></tr>
+</table>
+
+<h2>What is inside, and what it can see</h2>
+
+<p>The image holds KiCad, this plugin, its command line and the solver. During
+a run the container is given exactly two things: the board's
+<span class="path">simulation</span> folder, which it may write to, and the
+plugin's solver binaries, which it may only read. It has no network, no access
+to your home directory, and it is removed when the run ends.</p>
+
+<p>Because the plugin and its command line are in there too, the image is also
+somewhere to work: mount a project folder and you have the whole command line,
+with KiCad's Python, inside the container. The two licence files — the plugin's
+and the solver's — are copied in beside the code they cover, at
+<span class="path">/opt/plugin</span>, so the terms can be read without a
+checkout anywhere near.</p>
+
+<h2>Two commands you can copy</h2>
+
+<p>Both are typed in your own shell, in the folder your board is in. That folder
+becomes <span class="path">/work</span> inside the container and is the only
+thing of yours it can see, so a board named there is
+<span class="path">/work/board.kicad_pcb</span>.</p>
+
+<p><strong>A shell inside it</strong>, to look round — KiCad, this plugin and
+the solver are all in here:</p>
+
+<p><code>docker run --rm -it -v "$PWD:/work" antenna-workbench:latest bash</code></p>
+
+<p><strong>The command line inside it</strong>, driven from outside — the same
+verbs the <span class="path">Command line</span> guide describes, running on the
+container's KiCad rather than yours:</p>
+
+<p><code>docker run --rm -v "$PWD:/work" antenna-workbench:latest antenna-agent preflight --board /work/board.kicad_pcb</code></p>
+
+<p><code>docker run --rm -v "$PWD:/work" antenna-workbench:latest antenna-agent run start --board /work/board.kicad_pcb</code></p>
+
+<p>Naming <span class="path">antenna-agent</span> is optional — anything that is
+not a program is handed to it anyway, so <span class="path">versions</span>
+alone works — and <span class="path">--rm</span> means nothing is left behind
+when the command finishes. Add <span class="path">--network none</span> to cut
+the container off from the network as a solve started by this window is.</p>
+
+<h2>The recipe, if you want to change it</h2>
+
+<p>The image is built from a <span class="path">Dockerfile</span> that ships
+inside this plugin, at</p>
+
+<p class="path">&lt;the installed plugin&gt;/emkit/sim/container/Dockerfile</p>
+
+<p>Where the installed plugin is depends on where KiCad keeps its plugins, so
+the window prints the whole path rather than describing it: it is the first line
+of the <span class="path">Image build log</span> at the foot of the About page,
+ready to be selected and copied. The command line's
+<span class="path">docker status</span> prints the same path.</p>
+
+<p>It is a plain text file with a comment above every step saying why that step
+is there. Edit it — a package your board needs, a different base, an extra tool
+to work with inside the container — and press
+<span class="path">Rebuild image</span>; the button builds whatever the file now
+says. Nothing else has to be told.</p>
+
+<p><strong>No agent is in the image</strong>, and that is on purpose: which one,
+on what terms and billed to whose account is not ours to decide for you. The
+file has a commented block, just before the last few lines, saying where to put
+yours and what a container running one needs that a solve does not — a network,
+since a solve is started with no network at all, and its API key, which belongs
+on the <span class="path">docker run</span> that starts it and never in the
+recipe. A key written into the file is in the image, and stays there.</p>
+
+<p>To add a tool, put one more step after the block that installs KiCad — this
+one adds <span class="path">gerbv</span>, a gerber viewer, so that what a run
+plotted can be looked at inside the container:</p>
+
+<p><code>RUN apt-get update &amp;&amp; apt-get install -y --no-install-recommends gerbv &amp;&amp; rm -rf /var/lib/apt/lists/*</code></p>
+
+<p>Then <span class="path">Rebuild image</span>. The three parts of that line
+are worth keeping in the habit: <span class="path">update</span> because the
+package lists are not in the image,
+<span class="path">--no-install-recommends</span> because the recommendations of
+a desktop package are a desktop, and the <span class="path">rm</span> because
+the lists would otherwise stay in the layer for good.</p>
+
+<p>Two things to leave alone unless you mean them: the KiCad in the image must
+not be older than the one you run (it could not read your boards), and the
+<span class="path">COPY</span> lines are what put this plugin, the solver and
+their licences inside. An upgrade of the plugin replaces this file, so keep a
+copy of any edit you want to survive one.</p>
+
+<div class="note"><strong>Stop and Snapshot still work.</strong> They travel
+through a file in the run folder rather than through the operating system, so
+a run inside a container is as interruptible as one outside it — and closing
+this window still ends the run.</div>
+
+<h2>Things worth knowing</h2>
+<ul>
+  <li><strong>Installed, but reported missing.</strong> A window opened from the
+      Dock or the Start menu does not inherit your terminal's
+      <span class="path">PATH</span>, so this plugin looks for Docker where the
+      installers put it as well as on that path. If you installed it somewhere
+      of your own, link it into <span class="path">/usr/local/bin</span> and the
+      window will find it.</li>
+  <li><strong>A build that stops on a credential helper.</strong>
+      <span class="path">docker-credential-desktop: executable file not found</span>
+      is the same thing one level down: Docker runs small helper programs of its
+      own and looks for them on the path it was given. They live beside the
+      client, which is where this plugin points it, so a helper you keep
+      elsewhere wants the same link into
+      <span class="path">/usr/local/bin</span>.</li>
+  <li><strong>File sharing on macOS and Windows.</strong> Docker Desktop only
+      shares the folders you have listed in its settings. A project outside
+      those cannot be mounted, and the run says so.</li>
+  <li><strong>Memory.</strong> Docker Desktop runs a virtual machine with a
+      memory limit of its own, and the solver sizes its mesh against what it
+      can see. If a run that fits natively refuses inside the container, raise
+      the VM's memory in Docker Desktop's settings.</li>
+</ul>
+
+</main>
+</body>
+</html>

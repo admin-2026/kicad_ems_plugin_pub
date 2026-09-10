@@ -20,9 +20,16 @@
 *.png binary
 *.exe binary
 
-# The Linux solver, which has no suffix for the rule above to match. It is
-# untracked in this repo (see .gitignore) and committed in the public one, and
-# both check out through this file -- so it is named here rather than left to
-# `text=auto`'s content sniffing, which would almost certainly call an ELF
-# binary and needs to be right every time, not almost.
-binaries/monopole binary
+# The solver builds. Only the Windows one ends in a suffix the rule above
+# matches: the Linux and macOS builds are named for their machine
+# (`monopole-linux-aarch64`, `monopole-macos`) and end in nothing at all. They
+# are untracked in this repo (see .gitignore) and committed in the public one,
+# and both check out through this file -- so the whole directory is named here
+# rather than left to `text=auto`'s content sniffing, which would almost
+# certainly call an executable binary and needs to be right every time, not
+# almost.
+#
+# The directory rather than a list of names, because the list is
+# emkit/sim/builds.py's and a second copy of it here would be one that could
+# fall behind: nothing else is ever filed under binaries/.
+binaries/** binary

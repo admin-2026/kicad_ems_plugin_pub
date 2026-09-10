@@ -27,7 +27,7 @@ from bare_package import load, run_module_tests  # noqa: E402
 from helppage import assert_guide_loads  # noqa: E402
 
 wizard_scan = load("design.wizard_scan")
-links = load("links")
+links = load("emkit.links")
 registry = load("design.registry")
 scan_store = load("design.scan_store")
 
@@ -156,8 +156,12 @@ _SPEC_WIDTH = dict(
     n=4,
 )
 
-# The same scan for the other shipped design -- nothing in the driver changes.
+# The same scan for the other shipped designs -- nothing in the driver changes.
 _SPEC_IFA = dict(_SPEC, design="ifa", values={"width": 1.0, "height": 4.0, "tap": 2.0})
+
+# ... and for the meandered monopole, whose stack runs the other way round (its
+# legs cross the area's width and it advances into the depth).
+_SPEC_MEANDER = dict(_SPEC, design="meander", values={"width": 1.0, "turn": 3.0})
 
 
 def _setup(td):
@@ -396,6 +400,39 @@ def test_a_second_design_scans_through_the_same_driver():
         assert "resonant length sweep" in report
 
 
+def test_meander_scan_runs_the_same_driver():
+    # The meandered monopole: same driver, same spec shape, its own parameters.
+    # One path, so one run of spliced copper -- and the length it carries is
+    # the whole wire, the run in to the first turn included.
+    with tempfile.TemporaryDirectory() as td:
+        exe, gerbers = _setup(td)
+        results = wizard_scan.run_scan(
+            exe,
+            gerbers,
+            _STACK,
+            _BASE,
+            _SPEC_MEANDER,
+            os.path.join(td, "wizard"),
+        )
+        assert all(r["design"] == "meander" for r in results)
+        assert len(results) >= _SPEC_MEANDER["n"]
+        assert all(r["error"] is None for r in results)
+        for r in results:
+            geom = r["geom"]
+            assert abs(geom["turn_mm"] + geom["arm_mm"] - r["values"]["length"]) < 1e-6
+            assert r["values"]["turn"] == 3.0
+            # The knob is the closest approach, at every candidate of the sweep.
+            assert geom["turn_mm"] == 3.0
+            gbr = (pathlib.Path(r["outdir"]) / "antenna_copper.gbr").read_text(
+                encoding="utf-8"
+            )
+            assert "meander candidate copper" in gbr
+        report = (pathlib.Path(td) / "wizard" / "scan_report.js").read_text(
+            encoding="utf-8"
+        )
+        assert "Meandered monopole" in report
+
+
 def test_ifa_tap_scan_sweeps_the_match():
     # Sweeping the feed-to-short spacing at a fixed resonant length: the
     # driver only needs the design's parameter name.
@@ -625,7 +662,7 @@ def test_spliced_rects_cover_every_planned_candidate():
 
 
 def test_spliced_rects_run_over_every_design():
-    for spec in (_SPEC, _SPEC_IFA):
+    for spec in (_SPEC, _SPEC_IFA, _SPEC_MEANDER):
         assert wizard_scan.spliced_rects(spec, wizard_scan.plan(spec)), spec["design"]
 
 

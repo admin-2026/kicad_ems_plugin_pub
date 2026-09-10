@@ -9,8 +9,8 @@ One button, **Generate + place footprint**, and one chooser behind it — with
                             saved (design.scan_store), which is the same rows
                             read back off disk
     The Scan rows as they   one row: the geometry the Scan section's rows
-    stand                   describe *right now*, the shape previewed on the
-                            area marker (``ScanSection.current_candidate``)
+    stand                   describe *right now*, the shape previewed inside
+                            the area (``ScanSection.current_candidate``)
 
 The second table is the way to get copper without a simulation: pick its row
 and the previewed antenna is placed exactly as a scanned candidate would be.
@@ -47,10 +47,11 @@ import pcbnew
 import wx
 
 from ...design import footprints, scoring
-from ...markers import area_checks, area_marker, markergeom
-from ..theme import PAD
-from ..widgets import set_tip
-from .base import Section
+from ...emkit.gui.sections.base import Section
+from ...emkit.gui.theme import PAD
+from ...emkit.gui.widgets import set_tip
+from ...emkit.markers import markergeom, preview
+from ...markers import area_checks
 
 
 class Candidate(NamedTuple):
@@ -207,8 +208,8 @@ class CandidateDialog(wx.Dialog):
 
         self._prose(
             outer,
-            "The Scan rows as they stand — the shape previewed on the area "
-            "marker. Nothing simulated it, so it has no numbers to show:",
+            "The Scan rows as they stand — the shape previewed inside the "
+            "area marker. Nothing simulated it, so it has no numbers to show:",
         )
         if current is not None:
             current_lst = self._table(outer, [current], self._CURRENT_H)
@@ -431,7 +432,7 @@ class FootprintSection(Section):
         afterwards is only what the status line may claim
         (``Candidate.simulated``): the copper is identical either way, so an
         unsimulated placement has to say so itself."""
-        from ...sim import simulate
+        from ...emkit.sim import simulate
 
         design = self.design
         values, ctx = candidate.values, candidate.ctx
@@ -463,13 +464,12 @@ class FootprintSection(Section):
                 simulate.library_dir(board),
                 rot_deg=rot,
             )
-            # The scan section's antenna preview drawn on the area marker is
-            # the same copper this footprint now carries — clear it so the
-            # board doesn't hold it twice, and tell the scan section to stop
-            # wanting one, or its next redraw would put the candidate back on
-            # top of the footprint just placed.
-            fps = area_marker.marker_footprints(board)
-            if fps and area_marker.clear_antenna(fps[0]):
+            # The scan section's antenna preview is the same copper this
+            # footprint now carries — clear it so the board doesn't hold it
+            # twice, and tell the scan section to stop wanting one, or its next
+            # redraw would put the candidate back on top of the footprint just
+            # placed.
+            if preview.clear(board):
                 pcbnew.Refresh()
             self.page.scan.forget_preview()
             # The pass whose copper the overlap check judges has just produced

@@ -15,7 +15,22 @@ import importlib.util
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+def _root():
+    """The checkout these tests belong to: the nearest parent holding tools/.
+
+    Not ``parents[1]``: this file is one of the shared harness, and it is read
+    from three places -- ``emkit/tests/`` in the development checkout, the
+    merged ``tests/`` of an assembled tree, and the repository's own ``tests/``
+    beside it.
+    """
+    for candidate in pathlib.Path(__file__).resolve().parents:
+        if (candidate / "tools" / "install.py").is_file():
+            return candidate
+    raise RuntimeError(f"No tools/install.py above {__file__}")
+
+
+ROOT = _root()
 TOOLS = ROOT / "tools"
 
 _loaded = {}

@@ -10,54 +10,32 @@ It adds one button to the PCB toolbar. Behind it:
 - **EM simulation** of the board you have open — a bundled FDTD solver meshes
   your real copper, stackup and drills and reports the antenna's radiation
   pattern and impedance (S11).
-- **Design wizards** for common topologies — an **L-shaped monopole** and a
-  **meandered inverted-F**. Mark the area the antenna may use, sweep its
-  dimensions, and the plugin simulates the candidates and ranks them by S11 at
-  your target frequency.
+- **Design wizards** for common topologies — an **L-shaped monopole**, a
+  **meandered inverted-F** and a **meandered monopole**. Mark the area the
+  antenna may use, sweep its dimensions, and the plugin simulates the
+  candidates and ranks them by S11 at your target frequency.
 
 ## Install
 
-**Requirements:** KiCad 9.0 or later is recommended. Windows and Linux are both
-supported — the one package below carries the simulator for each, and the
-plugin runs whichever belongs to the machine it starts on. The Linux build
-is x86-64. macOS is not supported yet: there is no macOS build of the
-simulator, so a run there stops with a message saying so.
+**Requirements:** KiCad 9.0 or later is recommended. Windows, macOS and Linux
+are all supported, on Intel and Apple/ARM machines alike — the one package
+below carries a build of the simulator for each, and the plugin runs whichever
+belongs to the machine it starts on. In full: Linux x86-64, Linux AArch64,
+macOS and Windows.
 
-Download [`AntennaDesigner-<ver>-pcm.zip`](https://github.com/admin-2026/kicad_ems_plugin_pub/tree/main/dist) and let KiCad install it:
+Download `AntennaDesigner-<ver>-pcm.zip` from the [releases
+page](https://github.com/admin-2026/kicad_ems_plugin_pub/releases) — the
+[latest
+release](https://github.com/admin-2026/kicad_ems_plugin_pub/releases/latest)
+is at the top, older versions below it — and let KiCad install it:
 
 **Plugin and Content Manager > Install from File…** → pick the downloaded zip.
 
 Then restart KiCad. An antenna button appears on the top toolbar.
 
-The [releases
-page](https://github.com/admin-2026/kicad_ems_plugin_pub/releases) keeps the
-older versions.
-
-### Manual install
-
-The package is a plain zip and installing it is only a folder copy, so you can
-do that part yourself — worth knowing if the manager refuses the file, or if
-the KiCad you want it in isn't the one you are looking at:
-
-1. Unzip `AntennaDesigner-<ver>-pcm.zip`. The plugin is the `plugins` folder
-   inside it; the rest is what the manager reads.
-2. In the PCB editor: **Tools > External Plugins > Open Plugin Directory**.
-   KiCad opens its own plugin folder in your file manager — that is the
-   destination, whatever the path turns out to be.
-3. Copy that `plugins` folder into it and **rename it `antenna_plugin`**. The
-   name becomes the plugin's module name, so anything valid works, but it has
-   to be a name and not `plugins`. Copy it whole: the simulator binaries sit
-   inside it. If an older copy is already there, delete that copy first rather
-   than merging the two — modules dropped since would otherwise stay behind
-   and still be imported.
-4. **Tools > External Plugins > Refresh Plugins**, or restart KiCad.
-
-Repeat per KiCad if you run more than one; each version has its own plugin
-directory. On Linux, check that `antenna_plugin/binaries/monopole` is still
-executable afterwards (`chmod +x`) — some archive managers drop the execute
-bit on the way out of a zip, which KiCad's own installer does not. You can
-delete the build you don't need (`monopole.exe` on Linux, `monopole` on
-Windows); the plugin only ever reaches for its own.
+If the manager refuses the file, or the KiCad you want it in isn't the one you
+are looking at, the zip can also be unpacked into KiCad's plugin folder by
+hand: [docs/manual-install.md](docs/manual-install.md).
 
 ## Getting started
 
@@ -95,11 +73,13 @@ re-running.
 
 ### Design an antenna from scratch
 
-Pick a designer in the sidebar (**L-monopole** or **Inverted-F**):
+Pick a designer in the sidebar (**L-monopole**, **Inverted-F** or **Meander**):
 
 1. Place the **area marker** — a rectangle showing where the antenna may live,
-   with a triangle marking the feed edge. Drag, rotate and resize it like any
-   other board object; the sliders reshape it live.
+   with an arrow marking where the feed enters. Size it **on the board**:
+   double-click it and drag a corner, like any other KiCad rectangle; drag the
+   arrow to feed from another edge. Move (M) and rotate (R) work as usual, and
+   an **Angle** field turns it to any angle between KiCad's rotation steps.
 2. Choose which dimensions to sweep (the resonant length, track width, and the
    topology's own knobs). Moving a slider previews that candidate on the board.
 3. Press **Start scan**. Each candidate is simulated on a copy of your board —
@@ -131,7 +111,7 @@ carries both files:
 
 - **The plugin** — everything in this repository except the simulator binary —
   is **MIT** licensed ([`LICENSE`](LICENSE)). Use it, change it, ship it.
-- **The simulator** (`binaries/monopole`, `monopole.exe`) is **proprietary and
+- **The simulator** (every `binaries/monopole-*` build) is **proprietary and
   free for non-commercial use** ([`LICENSE-solver.txt`](LICENSE-solver.txt)).
   Personal projects, teaching and research are free, and that includes the
   simulation results — you may share the plugin and the solver with anyone, as
@@ -149,6 +129,15 @@ conversation, not a sales funnel.
 - **Examples:** <https://github.com/admin-2026/kicad_ems_plugin_examples> —
   boards to open and simulate.
 - **Community chat (Discord):** <https://discord.gg/XDY6EE5WA>
+
+## Running the solver in a container
+
+A simulation can run inside a Docker container that sees only the folder it
+writes into and no network — worth having when a script or an AI agent is
+driving it rather than you. It is a tick on the plugin's About page, or
+`antenna-agent docker on` from a shell, and it is how the solver runs on macOS,
+where no native build ships:
+[docs/docker.md](docs/docker.md).
 
 ## For developers
 

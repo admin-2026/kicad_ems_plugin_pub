@@ -9,6 +9,8 @@ against the design contract and listing it in ``registry``:
     registry    the designs the plugin ships; everything else looks them up here
     lmonopole   the L-shaped monopole (stem + arm)
     ifa         the meandered inverted-F (short pin + tapped feed + folded arm)
+    meander     the meandered monopole (one pin, a wire that turns back and
+                forth away from the feed edge)
 
     geometry    the shared planar work: centerline Paths -> a Geometry, its
                 copper rectangles, the off-grid rotation, the gerber splice and
@@ -28,7 +30,7 @@ against the design contract and listing it in ``registry``:
     scan_store  a finished scan's rows + the spec they were measured under,
                 kept in its folder so a later session can place from them
 
-Candidates are previewed by drawing them on the area marker itself
-(gui.sections.scan + markers.area_marker); the GUI reads designs through
-``registry`` and knows nothing about any particular one.
+Candidates are previewed by drawing them on the board inside the area marker,
+as a footprint of their own (gui.sections.scan + markers.preview); the GUI
+reads designs through ``registry`` and knows nothing about any particular one.
 """

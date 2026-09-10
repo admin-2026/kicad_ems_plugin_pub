@@ -43,7 +43,8 @@ markers package.
 
 import os
 
-from ..kicad.modtext import fp_text, num
+from .. import product
+from ..emkit.kicad.modtext import fp_text, num
 from . import annotation
 
 
@@ -81,7 +82,7 @@ def sexpr(design, geo, values, f0_ghz):
     pad = trace_w_mm
     pads = design.footprint_pads(geo)
     lines = [
-        f'(footprint "{name}" (version 20211014) (generator antenna_plugin)',
+        f'(footprint "{name}" (version 20211014) (generator {product.PACKAGE})',
         '  (layer "F.Cu")',
         f'  (descr "{design.name}, {round(geo.total_mm, 2):g} mm for '
         f"{f0_ghz:g} GHz, "
@@ -177,7 +178,7 @@ def place(board, text, name, at_mm, lib_dir, rot_deg=0.0):
     a reusable library). Returns the .kicad_mod path."""
     import pcbnew
 
-    from ..kicad.compat import vec2
+    from ..emkit.kicad.compat import vec2
 
     pretty = os.path.join(str(lib_dir), "antenna.pretty")
     os.makedirs(pretty, exist_ok=True)

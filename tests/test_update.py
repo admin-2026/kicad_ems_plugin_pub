@@ -13,17 +13,20 @@ versions are readable and one really is later.
 
 import os
 import pathlib
+import ssl
 import sys
+import urllib.error
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from bare_package import load, run_module_tests  # noqa: E402
+from bare_package import PRODUCT, load, run_module_tests  # noqa: E402
 
-links = load("links")
-update = load("update")
-checker = load("update.checker")
-github = load("update.github")
-version = load("update.version")
-model = load("update.model")
+links = load("emkit.links")
+update = load("emkit.update")
+checker = load("emkit.update.checker")
+github = load("emkit.update.github")
+trust = load("emkit.update.trust")
+version = load("emkit.update.version")
+model = load("emkit.update.model")
 
 RELEASE = model.Release(version="0.2.0", url="https://example.invalid/releases/0.2.0")
 
@@ -96,14 +99,17 @@ def test_payloads_with_nothing_to_offer_are_none():
 
 
 def test_the_configured_repository_is_the_published_one():
-    """REPO ships set to the repository the releases come from, and the About
-    page's GitHub link names the same one -- the two are one configuration
-    fact, so they are checked against each other rather than typed twice."""
-    assert github.repo() == "admin-2026/kicad_ems_plugin_pub"
-    assert github.latest_url(github.repo()) == (
-        "https://api.github.com/repos/admin-2026/kicad_ems_plugin_pub/releases/latest"
+    """REPO ships set to the repository this product's releases come from, and
+    the About page's GitHub link names the same one -- one configuration fact
+    (product.REPO), so they are checked against each other and against the
+    manifest rather than typed out again here."""
+    slug = PRODUCT.REPO
+    assert slug and slug.count("/") == 1
+    assert github.repo() == slug
+    assert github.latest_url(slug) == (
+        f"https://api.github.com/repos/{slug}/releases/latest"
     )
-    assert links.GITHUB_URL == "https://github.com/" + github.repo()
+    assert links.GITHUB_URL == "https://github.com/" + slug
 
 
 def test_an_unconfigured_source_makes_no_request():
@@ -131,6 +137,169 @@ def test_the_environment_overrides_the_configured_repo():
         )
     finally:
         del os.environ[github.REPO_ENV]
+
+
+# --- the trust store ------------------------------------------------------- #
+def _verify_error(message="unable to get local issuer certificate"):
+    """The failure a KiCad-on-macOS check comes back with, as urlopen raises
+    it: the verification error wrapped in a URLError."""
+    return urllib.error.URLError(ssl.SSLCertVerificationError(message))
+
+
+def _fake_urllib(answers):
+    """A stand-in for the urllib trust.urlopen calls, answering ``answers`` in
+    order (an Exception is raised, anything else returned). Records the context
+    each call was made with."""
+    used = []
+
+    def urlopen(request, timeout=None, context=None):
+        used.append(context)
+        answer = answers.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    fake = type(urllib)("urllib")
+    fake.request = type(urllib)("request")
+    fake.request.urlopen = urlopen
+    fake.error = urllib.error
+    return fake, used
+
+
+def _with_urllib(fake, call):
+    original = trust.urllib
+    trust.urllib = fake
+    try:
+        return call()
+    finally:
+        trust.urllib = original
+
+
+def _installed_bundle():
+    """A CA bundle this machine really has, or None -- the fallback tests need
+    a file OpenSSL will actually load, and can't invent one."""
+    path = ssl.get_default_verify_paths().cafile
+    return path if path and os.path.isfile(path) else None
+
+
+def test_a_python_with_roots_of_its_own_tries_only_its_own():
+    """The Linux/Windows case: the interpreter's default store is populated,
+    so it is the only context built and nothing else is searched for."""
+    original_roots, original_bundle = trust.has_roots, trust.bundle
+    trust.has_roots = lambda context: True
+    trust.bundle = lambda: None
+    try:
+        contexts = trust.contexts()
+    finally:
+        trust.has_roots, trust.bundle = original_roots, original_bundle
+    assert len(contexts) == 1
+    assert contexts[0].verify_mode == ssl.CERT_REQUIRED
+
+
+def test_an_empty_store_falls_back_to_a_bundle_on_disk():
+    """The macOS case: KiCad's own Python trusts nothing, so the default
+    context is skipped (trying it is a guaranteed failure the user waits for)
+    and a bundle found on disk is what verifies the call."""
+    path = _installed_bundle()
+    if path is None:
+        return  # no CA bundle on this machine; nothing to build the case from
+    original_roots, original_bundle = trust.has_roots, trust.bundle
+    trust.has_roots = lambda context: False
+    trust.bundle = lambda: path
+    try:
+        contexts = trust.contexts()
+    finally:
+        trust.has_roots, trust.bundle = original_roots, original_bundle
+    assert len(contexts) == 1
+    assert contexts[0].cert_store_stats()["x509"] > 0
+
+
+def test_no_roots_anywhere_still_answers_the_machines_own_context():
+    """With an empty store and no bundle to be found, the check fails against
+    the store the machine has -- with its own error, never with no context and
+    never with verification off."""
+    original_roots, original_bundle = trust.has_roots, trust.bundle
+    trust.has_roots = lambda context: False
+    trust.bundle = lambda: None
+    try:
+        contexts = trust.contexts()
+    finally:
+        trust.has_roots, trust.bundle = original_roots, original_bundle
+    assert len(contexts) == 1
+    assert contexts[0].verify_mode == ssl.CERT_REQUIRED
+
+
+def test_verification_is_never_switched_off():
+    """The rule the fallback must not quietly break: every context this module
+    builds checks the certificate *and* the hostname."""
+    for context in trust.contexts():
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname
+
+
+def test_an_unverifiable_certificate_is_retried_against_the_next_store():
+    response = object()
+    fake, used = _fake_urllib([_verify_error(), response])
+    original = trust.contexts
+    trust.contexts = lambda: ("first", "second")
+    try:
+        answer = _with_urllib(fake, lambda: trust.urlopen("request", 6))
+    finally:
+        trust.contexts = original
+    assert answer is response
+    assert used == ["first", "second"]
+
+
+def test_the_last_stores_failure_is_the_one_raised():
+    fake, used = _fake_urllib([_verify_error(), _verify_error("still no")])
+    original = trust.contexts
+    trust.contexts = lambda: ("first", "second")
+    try:
+        raised = None
+        try:
+            _with_urllib(fake, lambda: trust.urlopen("request", 6))
+        except urllib.error.URLError as exc:
+            raised = exc
+    finally:
+        trust.contexts = original
+    assert raised is not None and "still no" in str(raised)
+    assert len(used) == 2
+
+
+def test_a_failure_that_isnt_about_certificates_is_not_retried():
+    """Another set of roots cannot answer a timeout or a refused connection, so
+    trying one only makes the user wait twice."""
+    fake, used = _fake_urllib([urllib.error.URLError(TimeoutError("timed out"))])
+    original = trust.contexts
+    trust.contexts = lambda: ("first", "second")
+    try:
+        raised = None
+        try:
+            _with_urllib(fake, lambda: trust.urlopen("request", 6))
+        except urllib.error.URLError as exc:
+            raised = exc
+    finally:
+        trust.contexts = original
+    assert raised is not None
+    assert used == ["first"], "one store's timeout is every store's timeout"
+
+
+def test_a_certificate_failure_says_what_to_do_about_it():
+    """The log line the user reported, plus the clause that makes it
+    actionable -- but only when missing roots really are the explanation."""
+    original = trust.bundle
+    trust.bundle = lambda: None
+    try:
+        detail = checker.check("0.1.0", _raising(_verify_error())).detail
+        assert "CERTIFICATE_VERIFY_FAILED" in detail or "certificate" in detail
+        assert trust.HINT in detail
+        # A bundle was found and verification failed anyway: the roots are not
+        # what is wrong, so pointing at them would mislead.
+        trust.bundle = lambda: "/somewhere/cert.pem"
+        for exc in (_verify_error(), TimeoutError()):
+            assert trust.HINT not in checker.check("0.1.0", _raising(exc)).detail
+    finally:
+        trust.bundle = original
 
 
 # --- the checker ----------------------------------------------------------- #

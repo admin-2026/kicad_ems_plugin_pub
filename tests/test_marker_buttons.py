@@ -1,8 +1,8 @@
 """What the two marker buttons show and say (no KiCad, real wx stubbed).
 
-Both marker sections put a footprint on the board and then leave the user in
-the PCB editor with it, so three things have to be visible from the plugin
-window:
+Both marker sections put a drawing of their own on the board and then leave
+the user in the PCB editor with it, so three things have to be visible from the
+plugin window:
 
 * what the button is about to place -- the Feed marker box wears a picture of
   the marker beside its button (tools/icons/markers.py draws it), because the
@@ -34,11 +34,11 @@ import wx_stub  # noqa: F401,E402  (installs wx and pcbnew)
 from bare_package import load, run_module_tests  # noqa: E402
 
 area_section = load("gui.sections.area")
-marker_section = load("gui.sections.marker")
+marker_section = load("emkit.gui.sections.marker")
 area_marker = load("markers.area_marker")
-feed_marker = load("markers.feed_marker")
+feed_marker = load("emkit.markers.feed_marker")
 registry = load("design.registry")
-reveal = load("gui.reveal")
+reveal = load("emkit.gui.reveal")
 
 wx = wx_stub.wx
 pcbnew = sys.modules["pcbnew"]
@@ -46,8 +46,10 @@ _SIZER = type(wx.BoxSizer())
 
 
 class _FakeMarker:
-    """A placed marker footprint, as far as these tests' code paths ask: the
-    graphics the layer lookup walks (none, so no layer switch is attempted)."""
+    """A placed marker, as far as these tests' code paths ask: the graphics the
+    layer lookup walks (none, so no layer switch is attempted). A footprint's
+    accessor, not a group's -- the area marker's own group path is exercised
+    against a fake board in test_area_drag.py."""
 
     def GraphicalItems(self):
         return []
@@ -157,10 +159,10 @@ def test_the_marker_button_comes_after_the_settings_it_places_with():
     ):
         row = _button_row(box, section.marker_btn)
         # The settings come first -- both boxes build more than one row of
-        # them (the sliders, then the Feed layer picker).
+        # them (the feed-width slider, then the Feed layer picker).
         assert row >= 2, "the button is above the marker settings"
         # ... and the status line last, under the button.
-        assert box.items[row + 1:] == [section._status_label]
+        assert box.items[row + 1 :] == [section._status_label]
 
 
 def test_the_feed_box_shows_a_picture_of_the_marker():
@@ -198,6 +200,7 @@ AREA_DECODED = {
     "layer": "User.2",
     "rot_deg": 0.0,
     "pivot": (0.0, 0.0),
+    "angle_deg": 0.0,
 }
 
 
@@ -213,7 +216,7 @@ def _placed(module, fp, shown=True, **finders):
         seen.append(item)
         return shown
 
-    with _patch(module, marker_footprints=lambda board: [fp], **finders):
+    with _patch(module, placed_markers=lambda board: [fp], **finders):
         with _patch(reveal, reveal_item=reveal_item):
             pcbnew.GetBoard = lambda: object()
             try:

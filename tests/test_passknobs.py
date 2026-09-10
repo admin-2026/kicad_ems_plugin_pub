@@ -23,8 +23,17 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import wx_stub  # noqa: F401,E402  (installs wx)
 from bare_package import load, run_module_tests  # noqa: E402
 
-passknobs = load("gui.sections.passknobs")
+formparams = load("emkit.formparams")
+passknobs = load("emkit.gui.sections.passknobs")
 run = load("gui.sections.run")
+
+
+def _contributed(row):
+    """What one row puts into a run's params. A row owns its widgets and what
+    they snapshot to; what the value *means* to a run is the shared
+    translation both frontends read a form through (emkit.formparams), which
+    is what ``PassKnobs.contribute`` calls."""
+    return formparams.pass_knobs(row.snapshot(), {})
 
 
 def _row():
@@ -40,8 +49,7 @@ def _row():
 # --------------------------------------------------------------------------- #
 def test_auto_is_the_ring_down_and_greys_the_field():
     row, _ = _row()
-    params = {}
-    row.contribute(params)
+    params = _contributed(row)
     assert params["time_ns"] == 0.0  # 0 = run until the port rings down
     assert row.value.enabled is False
 
@@ -58,9 +66,7 @@ def test_a_typed_length_is_what_the_solver_gets():
     row, _ = _row()
     row.auto.click(False)
     row.value.ChangeValue("12.5")
-    params = {}
-    row.contribute(params)
-    assert params["time_ns"] == 12.5
+    assert _contributed(row)["time_ns"] == 12.5
 
 
 def test_a_blank_or_unusable_length_is_refused_by_name():
@@ -71,11 +77,11 @@ def test_a_blank_or_unusable_length_is_refused_by_name():
         row.auto.click(False)
         row.value.ChangeValue(text)
         try:
-            row.contribute({})
+            _contributed(row)
             assert False, f"expected RuntimeError for {text!r}"
         except RuntimeError as exc:
             assert passknobs.SimTimeRow.LABEL in str(exc)
-            assert "Auto (ring-down)" in str(exc)
+            assert "ring-down" in str(exc)
 
 
 # --------------------------------------------------------------------------- #
@@ -138,9 +144,7 @@ def test_the_row_round_trips_through_the_model():
     target.sync()  # restore fires no event, so the caller re-derives the greying
     assert target.snapshot() == source.snapshot()
     assert target.value.enabled is True
-    params = {}
-    target.contribute(params)
-    assert params["time_ns"] == 8.0
+    assert _contributed(target)["time_ns"] == 8.0
 
 
 def test_a_file_without_the_keys_leaves_the_row_alone():

@@ -1,90 +1,90 @@
-"""Section 1 of the wizard: the antenna area + feed position, marked by a
-footprint.
+"""Section 1 of the wizard: the antenna area + feed position, drawn on the
+board.
 
-The area lives on the board as the area-marker footprint (area_marker.py) —
-a rectangle outline with a feed arrow on its bottom edge (a triangle pointing
-inward plus a short outward stem, with a dot on the feed point where the two
-meet), the same idea as the feed marker. "Place
-area marker" adds it at the board center through the pcbnew API — not the feed
-marker's clipboard/paste-to-cursor flow: when KiCad's clipboard parser rejects
-the footprint text it falls back to pasting it as a (slow) text string, and
-unlike the feed marker the drop point doesn't matter, since the user
-repositions it anyway. The sliders here reshape the placed marker live —
-width, height, the feed position along its edge, and the feed triangle's
-(visual-only) width — by rewriting its segments in place; the Area width,
-height and feed-position readouts also accept a typed value, for a precise
-size and feed location. Resizing the area leaves the feed point itself where it
-is drawn — the feed is usually lined up with something on the board, and the
-size is tuned around it, not the other way round. Each side holds it its own
-way: the width slider re-aims the feed-position slider to the new edge
-(``_hold_feed_point``), while the height slider, which moves the feed edge
-itself, slides the whole marker back instead (``area_marker.update_marker``'s
-``hold_feed``) so the area deepens away from the feed. The two
-side sliders stop at the board itself: with an
-Edge.Cuts outline drawn, width ends at the outline's span in x and height at
-its span in y (``_apply_side_range``, re-measured on every refresh), since an
-area larger than the board can't be placed on it; a board with no outline yet
-keeps the default SIDE_RANGE. The Feed-width slider and Feed-layer picker
-mirror the feed marker's (the base's ``build_feed_width`` /
-``build_feed_layer``), their
-values shared across both pages through the FormModel; so is the User layer
+The area lives on the board as the area marker (markers/area_marker.py): a
+rectangle graphic and a feed arrow (a triangle pointing inward plus a short
+outward stem, with a dot on the feed point where the two meet), held together
+in a group named ``AntennaAreaMarker``. "Place area marker" drops one beside
+the board outline through the pcbnew API.
+
+**The board is the interface.** The rectangle is a board graphic, so KiCad's own
+point editor puts a handle on each of its corners: double-click the marker to
+enter its group, drag a corner, and the area is the size you drew. The feed
+moves the same way — drag the arrow (a footprint, so it moves as one thing and
+can't be pulled apart) to the edge the feed enters from and the wizard lands its
+base back on the nearest edge, squared to it, at the point it was dropped
+(``area_marker.sync_marker``). Moving (M) and rotating (R) work as they do for
+anything else on the board. The status line under this box says so whenever
+there is a marker to say it about (EDIT_HINT), in the same words the marker
+carries on the board — KiCad draws the group's *name* over it, and that name
+ends in ``area_marker.HINT_TEXT`` — so the window and the drawing tell the user
+the same thing about where the work is done.
+
+So this section has no width, height or feed-position sliders: there is nothing
+here that describes the rectangle, because the rectangle describes itself. What
+is left is the Feed-width slider and the Feed-layer picker, which mirror the
+feed marker's (the base's ``build_feed_width`` / ``build_feed_layer``) and whose
+values are shared across both pages through the FormModel; so is the User layer
 this marker is drawn on, picked in the wizard's own Advanced pane
-(``build_layer_picker``, the same widget the simulate view builds) — one
-Marker-layer pick for both markers, wherever it is changed. Moving and rotating
-the marker (any angle — an off-grid rotation is handled by rotating the
-whole board in the simulation) is done in the editor with KiCad's own tools
-(M / R). The scan consumes the
-decoded rectangle + feed edge + position through spec(); the feed gap that
-sizes the ground stub is fixed at the runner's default (FEED_GAP_MM), not a
-slider. Placing a marker starts the design over: the scan section's persisted
-rows are tuned to whatever area was there before, so they go back to the
-design's seeds and out of the settings file (``_forget_scan_params``).
+(``build_layer_picker``). The feed width is visual only: it sizes the drawn
+triangle, and a sync carries the new size onto the board.
 
-It is the same idea as the feed marker — a footprint on a User layer, reshaped
-live by sliders — so it subclasses FeedMarkerSection, reusing the placed-marker
-lookup (``_markers``, keyed to area_marker here), the Feed-width / Feed-layer
-builders, the button's two labels (``_sync_button``: Place with no marker on
-the board, Show with one), the reply Place gives when a marker is already on
-the board (``_show_already_placed`` — it takes the PCB editor to that marker
-and leads with where it is) and the wrapped status line (``_set_status``); only
-the rest of the UI and the reshape/decode differ — this section's
-``_placed_text`` describes its own marker, and the shared reply is written from
-it.
+And, under the feed width and built like it, one control that is not a reading
+of the board but a lever on it: **Angle** (``_build_angle``) — a slider to sweep
+the marker round and a box to type the exact figure. KiCad turns a selection by
+its rotation *step*, and only a footprint carries an angle anyone can type, so a
+group can never be turned to 37.5° on the board — this is where that is done, in
+the same degrees KiCad means everywhere else. An off-grid angle is handled by
+rotating the whole board in the simulation, as it always was.
+
+The plugin otherwise reads the board rather than driving it: ``sync_from_board``
+— run when the page is shown and whenever the window regains the focus, which is
+exactly when the user comes back from dragging something — squares the outline
+back up if a drag pulled it out of square, repins the arrow, re-describes the
+marker on the status line and redraws the candidate preview against the area as
+it now stands. It is also where a marker an older version of the plugin drew as
+a single footprint is converted into today's draggable one
+(``_upgrade_old_markers``, legacy/area_marker_v1.py) — nothing below this
+section knows the old shape at all. The scan consumes the decoded rectangle +
+feed edge + position through ``spec()``; the feed gap that sizes the ground stub
+is fixed at the runner's default (FEED_GAP_MM), not a slider. Placing a marker
+starts the design over: the scan section's persisted rows are tuned to whatever
+area was there before, so they go back to the design's seeds and out of the
+settings file (``_forget_scan_params``).
+
+It is the same idea as the feed marker — the plugin's own drawing on a User
+layer, placed once and never replaced — so it subclasses FeedMarkerSection,
+reusing the placed-marker lookup (``_markers``, keyed to area_marker here), the
+Feed-width / Feed-layer builders, the button's two labels (``_sync_button``:
+Place with no marker on the board, Show with one), the reply Place gives when a
+marker is already on the board (``_show_already_placed`` — it takes the PCB
+editor to that marker and leads with where it is) and the wrapped status line
+(``_set_status``); only the rest of the UI and the sync/decode differ — this
+section's ``_placed_text`` describes its own marker, and the shared reply is
+written from it.
 """
 
 import pcbnew
 import wx
 
-from ...markers import area_marker, feed_marker
-from ..board import board_edge_span_mm
-from ..theme import PAD, ROW
-from ..widgets import UnitSlider, set_tip
-from .marker import GAP_DEFAULT, MARKER_LAYERS, FeedMarkerSection
+from ...emkit.gui.board import board_edge_span_mm
+from ...emkit.gui.sections.marker import GAP_DEFAULT, MARKER_LAYERS, FeedMarkerSection
+from ...emkit.gui.theme import PAD, ROW
+from ...emkit.gui.widgets import UnitSlider
+from ...emkit.markers import feed_marker
+from ...legacy import area_marker_v1
+from ...markers import area_marker
 
-# Rectangle-side slider range in tenths of a mm (wx sliders are integer).
-SIDE_RANGE = (20, 2000)  # rectangle sides: 2 .. 200 mm
-# Feed position along the edge, in tenths of a percent (wx sliders are
-# integer): a typed value places the feed to 0.1 % of the edge — well under a
-# grid cell on any sane area — rather than the whole percent a 0..100 slider
-# could express.
-POS_RANGE = (0, 1000)  # 0 .. 100 %
-POS_DEFAULT = 300  # feed at 30 % leaves the bend more room
-
-# ... but no wider than the board: with an Edge.Cuts outline drawn, the width
-# slider stops at the outline's span in x and the height slider at its span in
-# y (_apply_side_range), since an area bigger than the board it sits on can
-# never be placed. Boards are re-measured on every refresh -- the outline can
-# be drawn or resized while the wizard is open -- and a board with no outline
-# yet leaves the full SIDE_RANGE, with these tooltips saying which of the two
-# limits a slider is wearing.
-_TIP_CAPPED = (
-    "At most {mm:g} mm — the board outline's span in {axis} (Edge.Cuts). "
-    "Draw a bigger outline for a bigger area."
-)
-_TIP_UNCAPPED = (
-    "No Edge.Cuts outline on the board to limit the area — the full "
-    f"{SIDE_RANGE[0] / 10:g} … {SIDE_RANGE[1] / 10:g} mm range is offered."
-)
+# A fresh marker's rectangle: the design says how much room its antennas want
+# (design.area_hint_mm), held between these ends so that a starter is always
+# something the user can see and grab a corner of. Everything after the drop is
+# the drag's business -- these bound the plugin's opening guess, not the area.
+MIN_SIDE_MM = area_marker.MIN_SIDE_MM
+MAX_SIDE_MM = 200.0
+# The feed of a fresh marker sits at 30 % of its bottom edge: it leaves the
+# bend of an L or an F more room than the middle does. Where it goes after
+# that is wherever the arrow is dragged.
+START_FRAC = 0.3
 
 # The feed gap the scan sizes its ground stub from is fixed at the runner's
 # default (GAP_DEFAULT, hundredths of a mm) rather than exposed as a slider —
@@ -93,15 +93,26 @@ _TIP_UNCAPPED = (
 # ask for.
 FEED_GAP_MM = GAP_DEFAULT / 100.0
 
+# The Angle slider's positions are tenths of a degree over a whole turn, so the
+# slider reaches every angle the field can be typed: a marker is turned to face
+# the ground pour, and a tenth of a degree is finer than that ask ever is. 360
+# and 0 are the same marker -- a sweep that ends there reads back as 0.
+ANGLE_SCALE = 10
+ANGLE_RANGE = (0, 360 * ANGLE_SCALE)
 
-def _side_cap(span_mm):
-    """A board span (mm) as a side slider's maximum position (tenths of a mm):
-    rounded *down*, so the area never exceeds the outline it was measured
-    from, and held between SIDE_RANGE's own ends -- a board smaller than the
-    range's floor would otherwise invert it, and one larger than its ceiling
-    caps nothing."""
-    lo, hi = SIDE_RANGE
-    return min(max(int(span_mm * 10), lo), hi)
+# How the area is edited, said on the status line under this box whenever it
+# describes a placed marker. The marker itself says the same thing on the
+# canvas -- KiCad draws its group's name over it, and that name ends in these
+# words (area_marker.HINT_TEXT) -- so the window and the board agree.
+EDIT_HINT = f"{area_marker.HINT_TEXT.capitalize()} in the PCB editor."
+
+
+def _v1_markers(n):
+    """``n`` area markers from an older version of the plugin, as the subject
+    of a status line (``_upgrade_old_markers``). The case that happens is one,
+    and it reads like one; more than one is a board with extras on it, which the
+    placed-marker line has its own word about."""
+    return "An area marker" if n == 1 else f"{n} area markers"
 
 
 class AreaSection(FeedMarkerSection):
@@ -110,76 +121,37 @@ class AreaSection(FeedMarkerSection):
     # The button's two labels and what to do with the marker already on the
     # board when it is pressed with one there (the base's _sync_button /
     # _show_already_placed, which takes the editor to it and leads with where
-    # it is). This marker is reshaped, moved and rotated where the feed marker
-    # is only resized.
+    # it is). This marker is dragged into shape where the feed marker is only
+    # resized.
     _BTN_PLACE = "Place area marker"
     _BTN_SHOW = "Show placed area marker"
     _SHOW_TIP = (
         "An area marker is already on the board — this takes the PCB editor to "
-        "it. The sliders reshape it; delete it (Del) to place a new one."
+        "it. Double-click it to enter the group, then drag a corner of the "
+        "rectangle to resize the area or drag the arrow to move the feed; "
+        "delete it (Del) to place a new one."
     )
     _ALREADY_HINT = (
-        "the sliders reshape it, move (M) / rotate (R) it in the editor, or "
-        "delete it (Del) and Place again."
+        "double-click it to enter the group and drag a corner to resize the "
+        "area or the arrow to move the feed, move (M) / rotate (R) it in the "
+        "editor, or delete it (Del) and Place again."
     )
+    # A one-shot line waiting to go in front of whatever this section says next
+    # (_upgrade_old_markers / _set_status). A class attribute, so it is there
+    # before the first status line is written.
+    _note = ""
 
     def _build(self, body):
         p = self.scroll
         box = self.box(self._TITLE)
 
-        grid = wx.FlexGridSizer(3, ROW, PAD)
-        one_dp = "{:.1f}".format  # bare number; the unit rides alongside
-        w0, h0 = self._starter_size()
-        # width/height are tenths of a mm, the feed position tenths of a
-        # percent of its edge. All three are editable: type a precise value
-        # into the box, with the unit in a label beside it. Each reshapes the
-        # placed marker live -- naming the one knob it drives, so a slider
-        # that is out of step with the board (_reshape_args) doesn't ride
-        # along with it.
-        self.w = UnitSlider(
-            grid,
-            p,
-            "Area width",
-            SIDE_RANGE,
-            w0,
-            10,
-            self._on_width,
-            fmt=one_dp,
-            editable=True,
-            suffix="mm",
-        )
-        self.h = UnitSlider(
-            grid,
-            p,
-            "Area height (depth)",
-            SIDE_RANGE,
-            h0,
-            10,
-            lambda: self._on_slider("h"),
-            fmt=one_dp,
-            editable=True,
-            suffix="mm",
-        )
-        self.pos = UnitSlider(
-            grid,
-            p,
-            "Feed position along its edge",
-            POS_RANGE,
-            POS_DEFAULT,
-            10,
-            lambda: self._on_slider("frac"),
-            fmt=one_dp,
-            editable=True,
-            suffix="%",
-        )
         # The Feed-width slider and Feed-layer picker mirror the feed marker's
         # (shared across both pages through the FormModel); the width also
-        # drives this marker's feed triangle, so it live-reshapes like the area
-        # sliders (build_feed_width / build_feed_layer live on the base).
-        self.build_feed_width(p, grid, lambda: self._on_slider("tri"))
-        # The two side sliders end at the board outline, not at SIDE_RANGE,
-        # whenever the board has one -- which also clamps the starter size.
-        self._apply_side_range()
+        # draws this marker's feed triangle, so moving it repins the arrow at
+        # the new size (build_feed_width / build_feed_layer live on the base).
+        grid = wx.FlexGridSizer(3, ROW, PAD)
+        self.build_feed_width(p, grid, self._on_feed_width)
+        self._build_angle(p, grid)  # under the width, the section's other knob
         box.Add(grid, 0)
 
         layer_grid = wx.FlexGridSizer(2, ROW, PAD)
@@ -187,11 +159,10 @@ class AreaSection(FeedMarkerSection):
         box.Add(layer_grid, 0, wx.EXPAND | wx.TOP, ROW)
 
         # The button comes after the settings it places the marker with, as the
-        # feed marker's does (sections.marker._build_controls): the shape is
-        # dialled in above, then the button that puts it on the board, then the
-        # status line reporting what landed. It carries the same two labels as
-        # the feed marker's (_sync_button): Place with none on the board, Show
-        # with one on it.
+        # feed marker's does (sections.marker._build_controls): the picks are
+        # made above, then the button that puts the marker on the board, then
+        # the status line reporting what landed — and, from then on, what the
+        # board says the area is.
         self.marker_btn = wx.Button(p, label=self._BTN_PLACE)
         self.marker_btn.Bind(wx.EVT_BUTTON, self.on_place)
         box.Add(self.marker_btn, 0, wx.TOP, PAD)
@@ -200,16 +171,42 @@ class AreaSection(FeedMarkerSection):
         box.Add(self._status_label, 0, wx.EXPAND | wx.TOP, PAD)
         self.add_to_body(body, box)
 
+    def _build_angle(self, pane, grid):
+        """The Angle row (three cells of ``grid``, under the Feed width it is
+        the twin of): the marker's rotation on the board, in the degrees KiCad
+        means everywhere else — counter-clockwise on screen, 0 for a marker as
+        it is placed. A slider to sweep it round and see where the antenna
+        wants to face, and a box to type the angle you actually want; both are
+        also the readout, so a marker turned in the editor shows up here.
+
+        This is the one thing about the marker the board cannot say. KiCad
+        rotates a selection by its rotation *step* (Preferences → PCB Editor →
+        Editing Options), and only a footprint carries an angle anyone can
+        type; the marker is a group, so R alone can never reach 37.5°. The
+        size, the feed's place and everything else stay on the board where the
+        user drags them."""
+        self.angle = UnitSlider(
+            grid,
+            pane,
+            "Angle",
+            ANGLE_RANGE,
+            0,
+            ANGLE_SCALE,
+            self._on_angle,
+            fmt="{:.1f}".format,
+            editable=True,
+            suffix="°",
+            value_w=56,
+        )
+        self.angle.set_tip(
+            "Turn the placed marker, in degrees counter-clockwise (0 = as "
+            "placed, feed along the bottom edge). KiCad's own R turns it in "
+            "whole rotation steps; this is how it reaches an angle between "
+            "them — type one in the box for an exact figure. Everything else "
+            "about the marker is dragged on the board."
+        )
+
     # --- values ---------------------------------------------------------------
-    def w_mm(self):
-        return self.w.value()
-
-    def h_mm(self):
-        return self.h.value()
-
-    def frac(self):
-        return self.pos.value() / 100.0
-
     def gap_mm(self):
         return FEED_GAP_MM  # fixed; the runner cuts its own gap
 
@@ -220,231 +217,209 @@ class AreaSection(FeedMarkerSection):
         return self.width_mm()
 
     def _starter_size(self):
-        """Starter rectangle in slider units: the page's design says how much
-        room its antennas want at the main dialog's frequency
+        """The rectangle a fresh marker is drawn with, in mm: the page's design
+        says how much room its antennas want at the main dialog's frequency
         (``design.area_hint_mm`` -- an L-monopole lies down over a quarter
-        wave, an inverted-F folds into a fraction of one)."""
+        wave, an inverted-F folds into a fraction of one), clamped to the
+        board's own outline where there is one, since an area bigger than the
+        board can never be placed on it. It is only a starting point: the user
+        drags the rectangle to the size they mean."""
         freq = self.page.host.target_freq_ghz(2.45)
-        w_mm, h_mm = self.page.design.area_hint_mm(max(freq, 0.1))
-
-        def clamp(v):
-            return min(max(int(round(v * 10)), SIDE_RANGE[0]), SIDE_RANGE[1])
-
-        return clamp(w_mm), clamp(h_mm)
-
-    def _apply_side_range(self):
-        """Cap the Area width / height sliders at the board's own outline: the
-        widest sensible area is the board's span in x, the deepest its span in
-        y (a rectangle bigger than the board can't be placed on it). With no
-        Edge.Cuts outline drawn -- or no board -- there is nothing to measure
-        against and the sliders keep their default SIDE_RANGE.
-
-        Run at build time and on every refresh, since the outline can be drawn
-        or resized while the wizard is open. A cap that drops below the current
-        slider value moves the *slider* only; the placed marker is left alone
-        (the plugin doesn't resize the user's marker behind their back, and
-        ``refresh``'s decode is what puts the two back in step)."""
+        want = self.page.design.area_hint_mm(max(freq, 0.1))
         span = board_edge_span_mm() or (None, None)
-        for sl, extent, axis in zip((self.w, self.h), span, "xy"):
-            if extent is None:
-                sl.set_range(SIDE_RANGE)
-                set_tip(sl.slider, _TIP_UNCAPPED)
-            else:
-                cap = _side_cap(extent)
-                sl.set_range((SIDE_RANGE[0], cap))
-                set_tip(sl.slider, _TIP_CAPPED.format(mm=cap / 10, axis=axis))
-
-    def feed_sync_labels(self):
-        """Every slider readout of this box -- the area sliders as well as the
-        inherited feed width -- back in step with its slider, reshaping
-        nothing. Overrides the base's (which knows only the feed width) so a
-        restore of the shared form refreshes the whole box."""
-        for sl in (self.w, self.h, self.pos, self.marker_width):
-            sl.sync_label()
+        return tuple(
+            min(max(side, MIN_SIDE_MM), MAX_SIDE_MM if extent is None else extent)
+            for side, extent in zip(want, span)
+        )
 
     # --- events ---------------------------------------------------------------
-    def _on_width(self):
-        """The Area-width slider moved. The rectangle is centred on the
-        marker's own origin, so both side edges move and a feed held at a fixed
-        *fraction* of the edge would slide across the board with every nudge of
-        this slider — off whatever the user lined the feed up with. So the
-        feed-position slider is re-aimed first (_hold_feed_point), leaving the
-        feed where it is drawn and the area growing (or shrinking) around it;
-        then the marker is reshaped as any other slider does it — driving the
-        feed position as well as the width, since the re-aimed fraction is this
-        slider's own doing."""
-        self._hold_feed_point()
-        self._on_slider("w", "frac")
+    def _on_feed_width(self):
+        """The Feed-width slider moved: redraw the marker's triangle at the new
+        width (the repin writes the whole arrow anyway) and re-describe it. A
+        repin that failed keeps its own message on the status line."""
+        self.marker_width.sync_label()
+        if self._apply_live():
+            self.refresh_status()
 
-    def _hold_feed_point(self):
-        """Re-aim the feed-position slider so the feed point stays where it is
-        on the board under the width the width slider now holds: the feed's
-        offset from the marker's centre is read off the placed marker — which
-        still carries the *previous* width at this point, the reshape comes
-        after — and turned back into a fraction of the new edge.
-
-        The marker is asked rather than a remembered slider value because it is
-        what the user sees: whatever they moved, rotated or typed their way to
-        is the position being held. A feed the new width can no longer reach
-        clamps to the slider's own range (and the marker keeps the triangle
-        clear of the corners regardless — area_marker._local_arrow). Silent
-        when no marker is placed, or when its segments no longer decode: there
-        is then nothing on the board to hold still, and the reshape that
-        follows reports the breakage."""
-        w_new = self.w_mm()
-        fps = self._markers()
-        if not fps or w_new <= 0:
+    def _on_angle(self):
+        """The Angle slider moved, or a figure was typed into its box: turn the
+        placed marker to it (``area_marker.rotate_marker``). With no marker on
+        the board there is nothing to turn — the control sits at 0 and the
+        status line already says to Place one. A box holding something that
+        isn't a number yet ("-", "3e") never reaches here: UnitSlider commits
+        only what parses, and only when it moves the slider. A turn that failed
+        keeps its own message on the status line."""
+        markers = self._markers()
+        if not markers:
             return
         try:
-            d = area_marker.decode_marker(fps[0])
-        except ValueError:
+            area_marker.rotate_marker(markers[0], self.angle.value(), self.tri_w_mm())
+            pcbnew.Refresh()
+        except Exception as exc:
+            self._set_status(f"✗ {exc}")
             return
-        if d["frac_local"] is None:
-            return  # an edited marker: the slider's own fraction is a guess
-        offset_mm = (d["frac_local"] - 0.5) * d["w_mm"]  # feed, off the centre
-        self.pos.set_value((0.5 + offset_mm / w_new) * 100)  # no EVT_SLIDER
+        self._follow_preview()
+        self.angle.sync_label()
+        # The control keeps the value it was just moved to (keep_angle): the
+        # marker's own reading of it comes back rounded, and writing that back
+        # into a slider under the thumb -- or a box under the caret -- is how a
+        # control starts fighting its own input.
+        self.refresh_status(keep_angle=True)
 
-    def _on_slider(self, *knobs):
-        """A slider moved, naming the ``knobs`` (_reshape_args) it drives:
-        reshape the placed marker live and re-describe it, syncing the sliders
-        it did *not* drive back to what is on the board. A reshape that failed
-        keeps its own message on the status line."""
-        self.feed_sync_labels()
-        if self._apply_live(*knobs):
-            self.refresh_status(sync=True, driven=knobs)
+    def sync_from_board(self):
+        """Take the board's word for the area: convert an area marker an older
+        version of the plugin left there, square the outline back up if a drag
+        left it out of square, repin the feed arrow onto it as the user left the
+        two, re-describe the marker on the status line and redraw the candidate
+        preview against it.
 
-    def _apply_live(self, *knobs):
-        """Reshape the placed area marker in place (its segments are rewritten,
-        so position, rotation and the editor's undo pointers hold) to the
-        current Area-marker-layer pick and to _reshape_args: the sliders named
-        in ``knobs``, and the marker's own drawn geometry for everything else.
-        Overrides the feed section's, which draws the other marker; both are
-        called by the sliders and by the Advanced pane's layer picker — which
-        names no knob at all, so it moves the marker's layer and nothing else.
-        With no marker placed there is nothing to reshape — the caller still
+        This is the whole board→plugin direction, and it runs when the page is
+        shown and when the window regains the focus — the moment the user comes
+        back from dragging a corner in the PCB editor. There is no polling: the
+        drag is KiCad's, with KiCad's own undo, and nothing here needs to see it
+        happen."""
+        self._upgrade_old_markers()
+        if self._apply_live():
+            self.refresh_status()
+
+    def _upgrade_old_markers(self):
+        """Convert any area marker an older version of the plugin drew as a
+        single footprint into the group this wizard drags
+        (legacy.area_marker_v1), and leave a note about it for the status line.
+
+        Silent when there is nothing to convert, which is every board but the
+        first look at an old one. Not asked about first: a marker of the old
+        kind has no drag handles, and dragging is the whole interface here, so
+        leaving one would leave the user with a marker none of this section's
+        instructions fit. It is said afterwards rather than asked beforehand
+        because the board is changed by it — and a plugin's change is not on
+        KiCad's undo stack.
+
+        A marker whose drawing no longer decodes is left alone and reported
+        instead: rebuilding it would mean guessing at an area the user drew."""
+        board = pcbnew.GetBoard()
+        if board is None:
+            return
+        try:
+            converted, skipped = area_marker_v1.upgrade(board)
+        except Exception as exc:  # a KiCad too old for groups, say
+            self._note = f"✗ {exc}"
+            return
+        notes = []
+        if converted:
+            pcbnew.Refresh()
+            n = len(converted)
+            notes.append(
+                f"{_v1_markers(n)} from an older version of the plugin "
+                f"{'has' if n == 1 else 'have'} been converted — the rectangle "
+                "is a board graphic now, so you size the area by dragging its "
+                "corners in the editor."
+            )
+        if skipped:
+            n = len(skipped)
+            notes.append(
+                f"✗ {_v1_markers(n)} from an older version of the plugin can no "
+                f"longer be read, and {'was' if n == 1 else 'were'} left on the "
+                f"board — delete (Del) and Place a new one. ({skipped[0][1]})"
+            )
+        self._note = " ".join(notes)
+
+    def _set_status(self, text):
+        """This section's status line, with any pending one-shot note put in
+        front of it (``_upgrade_old_markers``).
+
+        Here rather than at the one call site because the note reports a change
+        made to the user's board, and it has to survive whichever line comes
+        next — the marker described, or the error a sync ran into straight
+        after."""
+        if self._note:
+            text, self._note = f"{self._note} {text}", ""
+        super()._set_status(text)
+
+    def _apply_live(self):
+        """Bring the placed marker in line with this box and with itself: onto
+        the Marker-layer pick (Advanced), its outline squared back into a
+        rectangle if a drag pulled it out of one, and its feed arrow squared
+        back onto whichever edge the arrow now sits nearest, at the drawn
+        triangle's current width (``area_marker.sync_marker``). The rectangle's
+        *size* is never touched — whatever the user dragged is the area.
+
+        Overrides the feed section's, which reshapes the other marker; both are
+        called by the Feed-width slider and by the Advanced pane's layer picker.
+        With no marker placed there is nothing to do — the caller still
         refreshes the status line, which then names the layer Place will use.
-        Returns False when the reshape failed, its reason already on the status
-        line."""
-        fps = self._markers()
-        if not fps:
+        Returns False when the sync failed, its reason already on the status
+        line.
+
+        Shapes are rewritten in place, never removed and re-added: a shape
+        KiCad loaded with the board is KiCad's, and unlinking one from a plugin
+        is a use-after-free (feed_marker._detach_item)."""
+        markers = self._markers()
+        if not markers:
             return True
         board = pcbnew.GetBoard()
         try:
-            # None keeps every shape where it is: with no board there is no
-            # layer id to check the pick against, and the reshape is the same.
+            # None keeps every shape on the layer it is drawn on: with no board
+            # there is no layer id to check the pick against.
             layer_id = (
                 None
                 if board is None
                 else feed_marker.check_layer(board, self.marker_layer_n())
             )
-            w_mm, h_mm, frac, tri_w_mm = self._reshape_args(fps[0], knobs)
-            # The height slider moves the feed *edge*: the rectangle is drawn
-            # about the marker's own origin, so a deeper area would push the
-            # feed half the change across the board, off whatever it was lined
-            # up with. Reshaping with hold_feed slides the marker instead,
-            # leaving the feed point where it is drawn and growing the area away
-            # from it -- the depth's answer to what _hold_feed_point does for
-            # the width.
-            area_marker.update_marker(
-                fps[0], w_mm, h_mm, frac, tri_w_mm, layer_id, hold_feed="h" in knobs
-            )
+            area_marker.sync_marker(markers[0], self.tri_w_mm(), layer_id)
             pcbnew.Refresh()
         except Exception as exc:
             self._set_status(f"✗ {exc}")
             return False
-        # The drawn candidate follows the marker: it lives on the marker's own
-        # layer whenever it doesn't fit the area, so a layer move has to redraw
-        # it there (scan._draw_preview picks the layer every time).
+        # The drawn candidate is its own footprint (markers/preview.py) and so
+        # follows nothing by itself: it is redrawn against the area as it now
+        # stands, on the layer that solve then calls for (scan._draw_preview
+        # picks it every time -- the marker's own whenever the candidate
+        # doesn't fit).
         self._follow_preview()
         return True
 
-    def _reshape_args(self, fp, knobs):
-        """What a live reshape writes: ``(w_mm, h_mm, frac, tri_w_mm)`` taken
-        from this box's sliders for the ``knobs`` the user just moved ("w",
-        "h", "frac", "tri") and from the marker *as drawn* for the rest.
-
-        A reshape has to pass all four, but only one of them was asked for, and
-        a slider that is out of step with the board would otherwise be applied
-        along with it — the whole mismatch landing on the marker at the first
-        touch of any slider. And they do go out of step: the Feed-width slider
-        is shared with the simulate view's feed marker and restored from the
-        settings file, so it arrives holding whatever that marker wants, and
-        the side sliders can be held off the marker's size by the board-outline
-        cap (_apply_side_range). Reading the untouched knobs back off the
-        marker keeps a slider's reach to its own knob — the width slider
-        changes the width, and the feed keeps the size and place it is drawn
-        with. The sliders are then re-synced to the board (_on_slider), so what
-        is left of a mismatch shows up in the readouts rather than in the
-        copper.
-
-        A marker whose segments don't decode has nothing to read back, and
-        falls back to the sliders throughout (the reshape that follows names
-        the breakage)."""
-        vals = {
-            "w": self.w_mm(),
-            "h": self.h_mm(),
-            "frac": self.frac(),
-            "tri": self.tri_w_mm(),
-        }
-        drawn = self._drawn_shape(fp)
-        for key, value in drawn.items():
-            if key not in knobs:
-                vals[key] = value
-        return vals["w"], vals["h"], vals["frac"], vals["tri"]
-
-    def _drawn_shape(self, fp):
-        """The placed marker's own geometry in this box's terms — ``w``, ``h``,
-        ``tri`` and (when it is recoverable) ``frac`` — or an empty dict when
-        its segments no longer decode. ``frac`` is the *local* fraction, the
-        one the feed-position slider means, so it survives however the marker
-        was moved or rotated."""
-        try:
-            d = area_marker.decode_marker(fp)
-        except ValueError:
-            return {}
-        shape = {"w": d["w_mm"], "h": d["h_mm"], "tri": d["tri_w_mm"]}
-        if d["frac_local"] is not None:
-            shape["frac"] = d["frac_local"]
-        return shape
-
     def on_place(self, event=None):
         """Drop a new area marker just clear of the board outline (see
-        area_marker._drop_beside_board — easy to spot rather than buried among
-        existing copper on a dense board), and switch the editor to the
-        marker's own layer (the base's ``_activate_layer``) so the user
-        arrives there with it selected. With one already on the board this
-        refuses and takes the editor to that marker instead, saying where it is
-        and how big it is (``_show_already_placed``) — the sliders reshape it,
-        and the plugin never removes a placed footprint itself. The button says
-        as much before it is pressed (``_sync_button``); it is re-read here all
-        the same, since the marker can be deleted in the editor while the
-        wizard is open."""
+        area_marker._drop_spot — easy to spot rather than buried among existing
+        copper on a dense board), at the design's starter size, and switch the
+        editor to the marker's own layer (the base's ``_activate_layer``) so
+        the user arrives there with it selected. With one already on the board
+        this refuses and takes the editor to that marker instead, saying where
+        it is and how big it is (``_show_already_placed``) — the board is where
+        it gets resized, and the plugin never removes a placed drawing itself.
+        The button says as much before it is pressed (``_sync_button``); it is
+        re-read here all the same, since the marker can be deleted in the editor
+        while the wizard is open."""
         board = pcbnew.GetBoard()
         if board is None:
             self._set_status("No board is open.")
             return
-        fps = self._markers()
-        if fps:
-            self._show_already_placed(fps)
+        if self._markers():
+            self._show_already_placed(self._markers())
             return
         try:
             layer_n, layer_id = self._pick_layer(board)
             # The editor goes to the marker's layer as the marker itself does,
             # so the user arrives in the editor with it selected.
             self._activate_layer(board, layer_id)
+            w_mm, h_mm = self._starter_size()
             x, y = area_marker.place_marker(
-                board, layer_n, self.w_mm(), self.h_mm(), self.frac(), self.tri_w_mm()
+                board, layer_n, w_mm, h_mm, START_FRAC, self.tri_w_mm()
             )
         except Exception as exc:
             self._set_status(f"✗ {exc}")
             return
         self._forget_scan_params()
+        self._show_angle(0.0)  # a fresh marker is drawn upright
         self._placed_now(
             f"Area marker dropped beside the board ({x:g}, {y:g}) mm on "
-            f"User.{layer_n} — move it (M) over the copper-free zone the "
-            "antenna may use (at the board edge, next to the ground pour); "
-            "rotate it (R) to feed from another side; the triangle is "
-            "where the feed enters. The scan rows are back on their seeds."
+            f"User.{layer_n} at {w_mm:g} × {h_mm:g} mm — move it (M) over the "
+            "copper-free zone the antenna may use (at the board edge, next to "
+            "the ground pour), then double-click it and drag a corner to the "
+            "size you have room for. The triangle is where the feed enters: "
+            "drag it to another edge to feed from there. The scan rows are "
+            "back on their seeds."
         )
         self.page.refresh_area_checks()
 
@@ -471,101 +446,124 @@ class AreaSection(FeedMarkerSection):
 
     # --- decode ---------------------------------------------------------------
     def refresh(self):
-        """Read the placed marker off the board: sync the sliders to it and
-        describe the decoded area on the status line. Called at wizard startup
-        (and on every page switch), to pick up a marker already on the
-        board. The sliders' upper ends are re-measured off the board outline
-        first -- this is where a board opened (or an outline drawn) after the
-        wizard was built lands."""
-        self._apply_side_range()
-        self.refresh_status(sync=True)
-        if self._markers():
-            self._follow_preview()
+        """Read the placed marker off the board (``sync_from_board``). Called
+        at wizard startup and on every page switch, to pick up a marker already
+        on the board — and whatever was dragged since the page was last
+        looked at."""
+        self.sync_from_board()
 
-    def refresh_status(self, sync=False, driven=()):
-        """Describe the board's area marker on the status line: the decoded
-        rectangle, or — with none placed — what Place will do and the layer it
-        will use. Overrides the feed section's (whose text and decode are the
-        other marker's); the Advanced pane's layer picker calls it, which is
-        what makes a fresh pick visible before any marker exists. The button
-        follows the same reading of the board (the base's ``_sync_button``).
+    def refresh_status(self, keep_angle=False):
+        """Describe the board's area marker on the status line and put the
+        Angle field back in step with it: the decoded rectangle, or — with none
+        placed — what Place will do and the layer it will use. Overrides the
+        feed section's (whose text and decode are the other marker's); the
+        Advanced pane's layer picker calls it, which is what makes a fresh pick
+        visible before any marker exists. The button follows the same reading of
+        the board (the base's ``_sync_button``).
 
-        With ``sync`` the sliders are set from the decoded marker as well —
-        what ``refresh`` wants, and what every reshape wants for the knobs it
-        didn't drive, so a slider left out of step with the board comes back
-        into step instead of waiting to be applied. ``driven`` names the knobs
-        (_reshape_args) that were just dragged or typed into: those keep the
-        value the user is entering, rather than having the decode's rounding
-        written back under the caret."""
-        fps = self._markers()
-        self._sync_button(fps)
-        if not fps:
+        ``keep_angle`` leaves the Angle field alone — what the Angle field's own
+        handler wants, so the marker's rounded reading isn't written back over
+        what the user is still typing."""
+        markers = self._markers()
+        self._sync_button(markers)
+        if not markers:
+            self._show_angle(None)
             self._set_status(
-                "No area marker on the board — Place puts one at the board "
-                f"center on {MARKER_LAYERS[self.marker_layer_n() - 1]}: the "
-                "rectangle marks the copper-free zone the antenna may use "
-                "(near the ground pour's edge), the triangle marks the feed."
+                "No area marker on the board — Place puts one beside the board "
+                f"on {MARKER_LAYERS[self.marker_layer_n() - 1]}: a rectangle "
+                "marking the copper-free zone the antenna may use (near the "
+                "ground pour's edge), with an arrow marking the feed. You size "
+                "it by dragging its corners in the editor."
             )
             return
-        self._show(fps, sync=sync, driven=driven)
+        try:
+            d = area_marker.decode_marker(markers[0])
+        except ValueError as exc:
+            self._set_status(f"✗ {exc}")
+            return
+        if not keep_angle:
+            self._show_angle(d["angle_deg"])
+        # The line ends with how the marker is edited, every time it describes
+        # one: this box has no width, height or feed-position field, so the
+        # answer to "where do I change this?" belongs where the marker is
+        # described rather than in the title over an unrelated slider.
+        self._set_status(f"{self._placed_text(markers, d)} {EDIT_HINT}")
+
+    def _show_angle(self, degrees):
+        """Put the Angle control on the marker's own angle (0 with no marker on
+        the board — there is nothing turned, and the status line says so).
+
+        ``UnitSlider.set_value`` fires no event, so a readout can never
+        re-enter the handler that turns the marker; and it leaves the box alone
+        while the user is typing in it (sync_label), which is what keeps a
+        half-typed figure from being normalised under the caret."""
+        self.angle.set_value(0.0 if degrees is None else degrees)
 
     def _follow_preview(self):
-        """The area changed (a slider here, or startup's refresh picking up
-        an already-placed marker): the scan section's drawn antenna preview
-        solves against it, so redraw one that exists, and re-run the advisory
-        area-marker checks (the banner) against the new geometry. Guarded — the
-        scan section and the banner are built after this one."""
+        """The area changed (a drag picked up on focus, the feed width, or
+        startup finding a marker already placed): the scan section's drawn
+        antenna preview solves against it, so redraw one that exists, and
+        re-run the advisory area-marker checks (the banner) against the new
+        geometry. The redraw is what makes the preview follow the area at all —
+        it is a footprint of its own, so nothing about it moves with the
+        marker. Guarded — the scan section and the banner are built after this
+        one."""
         scan = getattr(self.page, "scan", None)
         if scan is not None:
             scan.refresh_preview()
         self.page.refresh_area_checks()
 
-    def _placed_text(self, fps, d=None):
+    def _placed_text(self, markers, d=None):
         """The placed area marker described: the decoded rectangle, where it
-        sits, its layer and which edge the feed enters from, plus a cleanup
-        nudge when there are extras. This section's answer to the feed
-        marker's placed-marker line (the base's ``_placed_text``), so the
-        status line and the base's already-placed reply describe this marker
-        through one text.
+        sits, its layer and which edge the feed enters from, plus a note when
+        it is bigger than the board and a cleanup nudge when there are extras.
+        This section's answer to the feed marker's placed-marker
+        line (the base's ``_placed_text``), so the status line and the base's
+        already-placed reply describe this marker through one text.
 
-        ``d`` is a decode the caller has already made (``_show`` syncs its
-        sliders from one); without it the marker is decoded here, which raises
-        ValueError when its drawing no longer decodes — the base's reply
-        catches that, and ``_show`` reports it in its own words."""
+        ``d`` is a decode the caller has already made; without it the marker is
+        decoded here, which raises ValueError when its drawing no longer decodes
+        — the base's reply catches that, and ``refresh_status`` reports it in
+        its own words."""
         if d is None:
-            d = area_marker.decode_marker(fps[0])
+            d = area_marker.decode_marker(markers[0])
         (x0, y0, _x1, _y1) = d["area"]
         text = (
             f"Area {d['w_mm']:g} × {d['h_mm']:g} mm at ({x0:g}, {y0:g})"
             f" on {d['layer'] or 'the board'} — feed enters from the "
             f"{d['edge']} edge at {d['frac'] * 100:.1f} %."
         )
-        if len(fps) > 1:
+        oversize = self._oversize_note(d)
+        if oversize:
+            text += f" {oversize}"
+        if len(markers) > 1:
             text += (
-                f" {len(fps)} area markers found — delete the extras "
+                f" {len(markers)} area markers found — delete the extras "
                 "(Del), the scan needs exactly one."
             )
         return text
 
-    def _show(self, fps, sync, driven=()):
-        try:
-            d = area_marker.decode_marker(fps[0])
-        except ValueError as exc:
-            self._set_status(f"✗ {exc}")
-            return
-        if sync:
-            # set_value: no EVT_SLIDER. The knob the user is working stays as
-            # they left it (``driven``); the rest take the marker's shape.
-            # The Feed-width slider is deliberately not among them: it is the
-            # feed *marker's* width, shared across both pages, and the area
-            # marker's triangle only follows it when the user moves it.
-            if "w" not in driven:
-                self.w.set_value(d["w_mm"])
-            if "h" not in driven:
-                self.h.set_value(d["h_mm"])
-            if "frac" not in driven and d["frac_local"] is not None:
-                self.pos.set_value(d["frac_local"] * 100)
-        self._set_status(self._placed_text(fps, d))
+    def _oversize_note(self, d):
+        """A word about an area dragged bigger than the board it has to fit on,
+        or "" when it fits (or there is no Edge.Cuts outline to measure against
+        — the pre-flight has its own say about a board with no outline).
+
+        Said, not enforced: the drag is the user's, and a marker that is
+        momentarily too big while the other corner is still to be moved is not
+        an error. The rectangle is compared to the outline's span both ways
+        round, since a marker turned on its side (R) fits what its unturned
+        self would not."""
+        span = board_edge_span_mm()
+        if span is None:
+            return ""
+        sx, sy = span
+        w, h = d["w_mm"], d["h_mm"]
+        if (w <= sx and h <= sy) or (w <= sy and h <= sx):
+            return ""
+        return (
+            f"Bigger than the board outline ({sx:g} × {sy:g} mm) — the antenna "
+            "has to fit on the board."
+        )
 
     def spec(self):
         """The scan's feed inputs: the placed marker's ``area``/``edge``/
@@ -573,15 +571,15 @@ class AreaSection(FeedMarkerSection):
         ``rot_deg``/``pivot``, plus the fixed feed ``gap_mm`` (FEED_GAP_MM).
         Raises with guidance when the marker is missing, duplicated or
         broken."""
-        fps = self._markers()
-        if not fps:
+        markers = self._markers()
+        if not markers:
             raise RuntimeError(
                 "place the area marker first (section 1) — it marks where "
                 "the antenna may go and where the feed enters"
             )
-        if len(fps) > 1:
+        if len(markers) > 1:
             raise RuntimeError("multiple area markers on the board; keep exactly one")
-        d = area_marker.decode_marker(fps[0])
+        d = area_marker.decode_marker(markers[0])
         return {
             "area": d["area"],
             "edge": d["edge"],

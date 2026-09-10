@@ -29,11 +29,20 @@ class _Event:
 
 
 class _Size:
-    """A wx.Size: the two fields anything here reads off one."""
+    """A wx.Size: the two fields anything here reads off one, under both the
+    names wx gives them (``x``/``y`` and ``width``/``height``)."""
 
     def __init__(self, x=-1, y=-1):
         self.x = x
         self.y = y
+
+    @property
+    def width(self):
+        return self.x
+
+    @property
+    def height(self):
+        return self.y
 
     def __repr__(self):
         return f"Size({self.x}, {self.y})"
@@ -119,9 +128,24 @@ class _Widget:
     def SetInitialSize(self, size):
         self._size = _as_size(size)
 
+    def GetClientSize(self):
+        return self._size
+
+    def GetChildren(self):
+        # A stub has no widget tree, but the callers that walk one (the wheel
+        # guard over a built page) must get something to iterate rather than
+        # the do-nothing __getattr__ answers with.
+        return []
+
     def __getattr__(self, name):
         # SetForegroundColour, SetToolTip, SetRange, Refresh, ... -- anything
-        # this harness has no opinion about.
+        # this harness has no opinion about. Only wx's own names, though: a
+        # leading capital is wx's convention and never this project's, and a
+        # widget that answered to *every* name would break the plugin's own
+        # `getattr(page, "advanced", None)` -- which asks whether a section has
+        # been built yet, and would be told yes by a stand-in.
+        if not name[:1].isupper():
+            raise AttributeError(name)
         return lambda *args, **kwargs: None
 
 
@@ -148,6 +172,17 @@ class _TextCtrl(_Widget):
 
     def ChangeValue(self, text):  # sets without firing EVT_TEXT
         self._value = text
+
+    # The multiline half: a log control appends to itself, empties itself and
+    # is read back to see what a run said (gui.sections.log). Real, because
+    # ``Clear`` is *overridden* there -- a swallowed one would leave the
+    # override's ``super().Clear()`` with nothing to call, which is not
+    # something a stand-in may quietly answer for.
+    def AppendText(self, text):
+        self._value += text
+
+    def Clear(self):
+        self._value = ""
 
     def type(self, text):
         """A keystroke: the field takes the focus, now holds ``text``, and
@@ -176,6 +211,23 @@ class _CheckBox(_Widget):
         """A click: the box takes the new state and fires EVT_CHECKBOX."""
         self._value = bool(value)
         self.fire("EVT_CHECKBOX")
+
+
+class _ActivityIndicator(_Widget):
+    """wx.ActivityIndicator: the spinner the About page's command-line box
+    shows in the checkbox's place while it writes (gui.sections.cli). It holds
+    whether it is running, so a test can tell a spinner that was started from
+    one that was only made."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.running = False
+
+    def Start(self):
+        self.running = True
+
+    def Stop(self):
+        self.running = False
 
 
 class _MouseState:
@@ -373,6 +425,12 @@ class _Choice(_Widget):
     def FindString(self, text):
         return self.items.index(text) if text in self.items else -1
 
+    def GetStrings(self):
+        """What the dropdown offers, in order -- how a test reads a picker
+        built from a table (emkit.choices) without knowing this stub keeps
+        them in ``items``."""
+        return list(self.items)
+
     def GetStringSelection(self):
         if 0 <= self.selection < len(self.items):
             return self.items[self.selection]
@@ -430,6 +488,7 @@ def _install():
     wx.SpinCtrl = _SpinCtrl
     wx.Button = _Widget
     wx.Gauge = _Widget
+    wx.ActivityIndicator = _ActivityIndicator
     wx.Image = _Image
     wx.Bitmap = _Bitmap
     wx.StaticBitmap = _StaticBitmap
@@ -471,6 +530,11 @@ def _install():
     pcbnew._is_stub = True
     pcbnew.GetBoard = lambda: None
     pcbnew.Refresh = lambda: None
+    # The base class KiCad hands the toolbar button. It lives here rather than
+    # in a test because the module that subclasses it is imported once for the
+    # whole run: a second stand-in installed later would leave the class
+    # subclassing the first one, and `issubclass` false against the second.
+    pcbnew.ActionPlugin = type("ActionPlugin", (), {})
 
     sys.modules["wx"] = wx
     sys.modules["pcbnew"] = pcbnew

@@ -1,21 +1,13 @@
 """Unit tests for antenna_plugin.design.scoring (pure, no KiCad, no wx).
 
-Loaded by path so it runs off-KiCad:  python3 tests/test_scoring.py
+Loaded through the bare package so it runs off-KiCad:  python3 tests/test_scoring.py
 """
 
-import importlib.util
 import math
-import pathlib
 
-_SRC = (
-    pathlib.Path(__file__).resolve().parents[1]
-    / "antenna_plugin"
-    / "design"
-    / "scoring.py"
-)
-_spec = importlib.util.spec_from_file_location("scoring", _SRC)
-scoring = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(scoring)
+from bare_package import load
+
+scoring = load("design.scoring")
 
 # A BLE-like target: 2.4-2.4835 GHz, 50 ohm, better-than-10 dB return loss.
 _BLE = scoring.Target(

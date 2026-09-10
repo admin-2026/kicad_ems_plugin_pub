@@ -34,7 +34,7 @@ import json
 import time
 from pathlib import Path
 
-from ..sim import simulate
+from ..emkit.sim import simulate
 from . import scoring
 
 # The two kinds of view, named once (sim.simulate) so the scan that writes a

@@ -1,20 +1,11 @@
 """Unit tests for antenna_plugin.kicad.version (pure, no KiCad).
 
-Loaded by path because the package __init__ imports pcbnew.
+Loaded through the bare package: the package __init__ imports pcbnew.
 """
 
-import importlib.util
-import pathlib
+from bare_package import load
 
-_SRC = (
-    pathlib.Path(__file__).resolve().parents[1]
-    / "antenna_plugin"
-    / "kicad"
-    / "version.py"
-)
-_spec = importlib.util.spec_from_file_location("kicad_version", _SRC)
-kicad_version = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(kicad_version)
+kicad_version = load("emkit.kicad.version")
 
 
 def test_parses_plain_version():

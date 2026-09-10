@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!-- Pre-flight guide for the "dielectric-count" problem (simulate.preflight).
+     Styled by emkit/assets/palette.css + help_theme.css, linked
+     relative to this file: the help viewer loads the guide from the install
+     tree, where those sheets are siblings, so nothing is templated or copied
+     at display time. Keep it plain HTML -- no module scripts, no CDN, no
+     network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin help — Dielectric gap count</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Dielectric gap count</h1>
+<p class="lead">The saved stackup does not have exactly one dielectric gap
+between each pair of adjacent copper layers (a board with N copper layers
+needs N−1 gaps; a single-layer board needs one substrate under the foil).</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Open <span class="path">File &gt; Board&nbsp;Setup &gt;
+      Board&nbsp;Stackup &gt; Physical&nbsp;Stackup</span>.</li>
+  <li>Read the stack top-to-bottom: between every two copper rows there must
+      be at least one core/prepreg row, and there must be no stray dielectric
+      above the top or below the bottom foil. Several consecutive plies
+      (core&nbsp;+&nbsp;prepreg) between the same two foils are fine — the
+      plugin merges them into one gap.</li>
+  <li>This state usually appears after changing the copper layer count while
+      the stackup was edited by hand, or after an importer wrote an unusual
+      stack. Adjusting the copper count in
+      <span class="path">Board&nbsp;Editor&nbsp;Layers</span> and letting the
+      Physical Stackup regenerate is the quickest reset (re-enter the
+      thicknesses afterwards).</li>
+  <li>Press <em>OK</em> and <strong>save the board</strong>
+      (<span class="path">Ctrl+S</span>).</li>
+</ol>
+
+<div class="note"><strong>Why it blocks the run:</strong> the simulator builds
+the vertical grid by alternating foil and substrate exactly as listed. A
+missing or extra gap would silently shift every layer above it, so the
+mismatch stops the run instead of producing a subtly wrong board.</div>
+</main>
+</body>
+</html>

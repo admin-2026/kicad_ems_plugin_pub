@@ -20,13 +20,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import wx_stub  # noqa: F401,E402  (installs wx / pcbnew)
 from bare_package import load, run_module_tests  # noqa: E402
 
-options = load("gui.options")
-theme = load("gui.theme")
-advanced = load("gui.sections.advanced")
-marker = load("gui.sections.marker")
+choices = load("emkit.choices")
+options = load("emkit.options")
+theme = load("emkit.gui.theme")
+advanced = load("emkit.gui.sections.advanced")
+marker = load("emkit.gui.sections.marker")
 area = load("gui.sections.area")
 registry = load("design.registry")
-config = load("sim.config")
+config = load("config")
 wx = wx_stub.wx
 _SIZER = type(wx.BoxSizer())
 
@@ -165,6 +166,63 @@ def test_every_field_gets_a_control():
     assert len(section.adv) == len(options.ADV_FIELDS)
 
 
+# --------------------------------------------------------------------------- #
+# The closed lists (emkit.choices)
+# --------------------------------------------------------------------------- #
+def test_every_closed_list_gets_a_picker():
+    # The other half of the table -> layout check above, and the one that keeps
+    # saving/restoring/contributing a loop: those read section.picks by key, so
+    # a list no box drew would raise there rather than here.
+    section = _section(_MarkerSection())
+    for picker in choices.SHARED:
+        assert picker.key in section.picks, picker.key
+    assert len(section.picks) == len(choices.SHARED)
+
+
+def test_a_picker_offers_its_values_captioned():
+    section = _section(_MarkerSection())
+    shown = section.picks[choices.COPPER_MODEL.key].GetStrings()
+    assert shown == choices.COPPER_MODEL.labels()
+
+
+def test_a_saved_form_holds_the_value_the_run_writes():
+    # The whole point: the settings file and the run parameters say the same
+    # word, and it is the one the config takes -- never the caption drawn
+    # beside it.
+    section = _section(_MarkerSection())
+    # The speed slider seeds the optimization box on a real page; without it
+    # the Cells-across-driven-copper field is empty and contribute refuses.
+    section.apply_preset(options.SPEED_PRESETS[options.SPEED_DEFAULT])
+    saved = section.snapshot()
+    for picker in choices.SHARED:
+        assert saved[picker.key] in picker.values(), saved[picker.key]
+    params = {}
+    section.contribute(params)
+    for picker in choices.SHARED:
+        assert params[picker.key] == saved[picker.key], picker.key
+
+
+def test_a_pick_survives_a_save_and_a_restore():
+    section = _section(_MarkerSection())
+    section.restore({"copper_model": "slab", "ground_check": "off"})
+    assert section.snapshot()["copper_model"] == "slab"
+    assert section.snapshot()["ground_check"] == "off"
+
+
+def test_an_older_settings_file_still_restores_its_metal_model():
+    # Written before the pick was saved as a value: the caption the widget
+    # drew, under the key the widget was called ("model").
+    section = _section(_MarkerSection())
+    section.restore({"model": "slab — volumetric foil"})
+    assert section.snapshot()["copper_model"] == "slab"
+
+
+def test_a_pick_that_no_longer_exists_restores_the_default():
+    section = _section(_MarkerSection())
+    section.restore({"copper_model": "cauldron"})
+    assert section.snapshot()["copper_model"] == choices.COPPER_MODEL.default
+
+
 # The pane's knobs that are not a typed field, each one config key: the pickers,
 # the narrow copper-cells box, the toggles the speed slider drives (two of them
 # under a label that reads the other way round -- "Skip in-plane feature
@@ -181,6 +239,7 @@ _KEYED_WIDGETS = (
     "adaptive",
     "mesh_fit_cell",
     "mesh_nudge",
+    "output_json",
     "refine_adaptive",
     "feed_snap_to_center",
     "ground_check",
@@ -236,7 +295,7 @@ def test_every_other_knob_shows_the_config_key_it_writes():
     shown = _labels(section.adv_pane.GetPane().sizer)
     for key in _KEYED_WIDGETS:
         assert theme.key_text(key) in shown, f"no widget shows {key}"
-        assert key in config.DEFAULTS, f"{key} is not a config knob"
+        assert key in config.AntennaConfig.DEFAULTS, f"{key} is not a config knob"
 
 
 def test_the_mesh_toggles_default_to_the_writer_s_defaults():
@@ -249,7 +308,7 @@ def test_the_mesh_toggles_default_to_the_writer_s_defaults():
     for name in ("mesh_fit_cell", "mesh_nudge"):
         widget = getattr(section, name)
         assert widget.GetValue() is True, name
-        assert config.DEFAULTS[name] is True, name
+        assert config.AntennaConfig.DEFAULTS[name] is True, name
         before = page.speed.overrides
         widget.fire("EVT_CHECKBOX")
         assert page.speed.overrides == before, name

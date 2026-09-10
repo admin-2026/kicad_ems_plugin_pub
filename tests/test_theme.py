@@ -23,8 +23,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import wx_stub  # noqa: F401,E402  (installs wx)
 from bare_package import load, run_module_tests  # noqa: E402
 
-theme = load("gui.theme")
-base = load("gui.sections.base")
+theme = load("emkit.gui.theme")
+base = load("emkit.gui.sections.base")
 wx = wx_stub.wx
 
 

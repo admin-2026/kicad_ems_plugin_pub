@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!-- Pre-flight guide for the "dielectric-eps" problem (simulate.preflight).
+     Styled by emkit/assets/palette.css + help_theme.css, linked
+     relative to this file: the help viewer loads the guide from the install
+     tree, where those sheets are siblings, so nothing is templated or copied
+     at display time. Keep it plain HTML -- no module scripts, no CDN, no
+     network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin help — Dielectric permittivity missing</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Dielectric permittivity missing</h1>
+<p class="lead">A dielectric layer in the saved stackup has no relative
+permittivity (<em>Epsilon&nbsp;R</em>, ε<sub>r</sub>) set.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Open <span class="path">File &gt; Board&nbsp;Setup &gt;
+      Board&nbsp;Stackup &gt; Physical&nbsp;Stackup</span>.</li>
+  <li>In the named dielectric row, either pick a <em>Material</em> with the
+      <span class="path">…</span> button (which fills ε<sub>r</sub> and loss
+      tangent from KiCad's table) or type the value from your laminate's
+      datasheet:
+      <table>
+        <tr><th>Laminate</th><th>ε<sub>r</sub> (typ.)</th></tr>
+        <tr><td>FR-4</td><td>4.4 – 4.6</td></tr>
+        <tr><td>Rogers RO4003C</td><td>3.38</td></tr>
+        <tr><td>Rogers RO4350B</td><td>3.48</td></tr>
+        <tr><td>PTFE / RT-duroid 5880</td><td>2.2</td></tr>
+      </table>
+      Every sublayer (ply) of the dielectric needs a value.</li>
+  <li>Press <em>OK</em> and <strong>save the board</strong>
+      (<span class="path">Ctrl+S</span>).</li>
+</ol>
+
+<div class="note"><strong>Why it isn't defaulted:</strong> the resonant
+frequency of a printed antenna scales roughly with
+1/√ε<sub>r</sub> — the difference between FR-4 (≈4.5) and a PTFE laminate
+(≈2.2) moves a 2.45&nbsp;GHz design by hundreds of MHz. A silent guess would
+be worse than an error, so the run stops instead.</div>
+</main>
+</body>
+</html>

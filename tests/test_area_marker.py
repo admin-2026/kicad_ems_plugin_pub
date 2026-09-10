@@ -2,27 +2,24 @@
 
 Covers the marker's local shape, decoding placed segments back into
 area + feed edge + feed position — under translation and any rotation (the
-off-grid residual is recovered as rot_deg/pivot) — the slider-fraction
-recovery and the validation errors. The package is assembled by
+off-grid residual is recovered as rot_deg/pivot) — the pinning that lands a
+dragged feed arrow back on the rectangle, and the validation errors. The
+package is assembled by
 hand around the real modules because antenna_plugin/__init__ imports
 pcbnew:  python3 tests/test_area_marker.py
 """
 
-import importlib
 import math
 import pathlib
-import sys
-import types
+
+from bare_package import load
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # Register a bare package (skipping antenna_plugin/__init__, which imports
 # pcbnew) so area_marker's relative import of feed_marker works.
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
-area_marker = importlib.import_module("antenna_plugin.markers.area_marker")
-markergeom = importlib.import_module("antenna_plugin.markers.markergeom")
+area_marker = load("markers.area_marker")
+markergeom = load("emkit.markers.markergeom")
 
 
 def _place(segments, dx=0.0, dy=0.0, quarter_turns=0):
@@ -172,25 +169,10 @@ def test_decode_all_rotations():
         assert d["edge"] == edge, f"{turns} turns"
         assert math.isclose(d["frac"], frac, abs_tol=1e-6), f"{turns} turns"
         assert d["w_mm"] == 30.0 and d["h_mm"] == 12.0
-        # The slider's local fraction is rotation-invariant.
-        assert math.isclose(
-            area_marker._local_frac(
-                _place(local, dx=40.0, dy=40.0, quarter_turns=turns), d
-            ),
-            0.3,
-            abs_tol=1e-4,
-        ), f"{turns} turns"
-
-
-def test_local_frac_none_when_segments_reordered():
-    segs = area_marker._local_segments(30.0, 12.0, 0.3)
-    d = area_marker._decode_segments(segs)
-    shuffled = [segs[1], segs[0]] + segs[2:]  # bottom edge no longer first
-    assert area_marker._local_frac(shuffled, d) is None
 
 
 # --------------------------------------------------------------------------- #
-# Holding the feed point through a reshape
+# Reading the feed point where it lies
 # --------------------------------------------------------------------------- #
 def test_feed_point_mm_reads_the_arrow_where_it_lies():
     """Unlike the decode's ``feed``, this is unrounded and underotated -- it
@@ -212,33 +194,219 @@ def test_feed_point_mm_rejects_segments_with_no_arrow():
         assert "single feed arrow" in str(exc), str(exc)
 
 
-def test_hold_shift_is_half_the_depth_the_area_gained():
-    """The rectangle grows about the marker's own origin, so half of every
-    millimetre of depth lands on the feed edge: sliding the marker back by this
-    puts the feed where it was and the whole change on the far edge."""
-    before = area_marker._local_segments(30.0, 12.0, 0.3)
-    after = area_marker._local_segments(30.0, 20.0, 0.3)
-    assert area_marker.hold_shift_mm(before, after) == (0.0, -4.0)
-    # Shallower moves it the other way, and a width change (the feed stays on
-    # its edge, at the fraction the section re-aims) needs no shift at all.
-    shallower = area_marker._local_segments(30.0, 6.0, 0.3)
-    assert area_marker.hold_shift_mm(before, shallower) == (0.0, 3.0)
-    assert area_marker.hold_shift_mm(before, before) == (0.0, 0.0)
+# --------------------------------------------------------------------------- #
+# Pinning a dragged feed arrow back onto the rectangle
+# --------------------------------------------------------------------------- #
+def _drag(segments, first, dx, dy):
+    """Move ``segments[first:]`` by (dx, dy) -- the user dragging the feed
+    arrow off its edge, with the rectangle left where it is."""
+    return segments[:first] + [
+        ((a[0] + dx, a[1] + dy), (b[0] + dx, b[1] + dy)) for (a, b) in segments[first:]
+    ]
 
 
-def test_hold_shift_follows_a_rotated_marker():
-    """The shift is measured in the frame the segments are in, so a marker the
-    user turned (R) is slid along its own feed normal, not the board's y."""
-    for deg in (30.0, 90.0, -127.5):
-        before = markergeom.rotate_segments(
-            area_marker._local_segments(30.0, 12.0, 0.3), deg
+def test_pin_feed_takes_the_edge_the_drop_is_nearest():
+    area = (-15.0, -6.0, 15.0, 6.0)
+    for point, edge in (
+        ((0.0, 5.0), "bottom"),
+        ((0.0, -5.0), "top"),
+        ((-14.0, 0.0), "left"),
+        ((14.0, 0.0), "right"),
+    ):
+        pinned = area_marker.pin_feed(area, point, tri_w_mm=2.0)
+        assert pinned["edge"] == edge, point
+        # The base centre lands *on* that edge, and the apex points inward.
+        segs = area_marker._decode_segments(
+            area_marker._rect_segments(area) + pinned["segments"]
         )
-        after = markergeom.rotate_segments(
-            area_marker._local_segments(30.0, 20.0, 0.3), deg
+        assert segs["edge"] == edge and segs["feed"] == (
+            round(pinned["feed"][0], 3),
+            round(pinned["feed"][1], 3),
         )
-        want = markergeom.rotate_pt((0.0, -4.0), deg)
-        for got, expected in zip(area_marker.hold_shift_mm(before, after), want):
-            assert math.isclose(got, expected, abs_tol=1e-9), deg
+
+
+def test_pin_feed_keeps_the_position_along_the_edge():
+    area = (0.0, 0.0, 40.0, 10.0)
+    pinned = area_marker.pin_feed(area, (30.0, 9.4), tri_w_mm=2.0)
+    assert pinned["edge"] == "bottom"
+    assert math.isclose(pinned["feed"][0], 30.0)  # kept its x
+    assert pinned["feed"][1] == 10.0  # squared onto the edge
+    assert math.isclose(pinned["frac"], 0.75)
+
+
+def test_pin_feed_clamps_a_drop_past_the_corner():
+    area = (0.0, 0.0, 40.0, 10.0)
+    pinned = area_marker.pin_feed(area, (200.0, 9.0), tri_w_mm=4.0)
+    assert pinned["edge"] == "bottom"
+    assert pinned["feed"][0] < 40.0 - 2.0  # the triangle stays off the corner
+    area_marker._decode_segments(
+        area_marker._rect_segments(area) + pinned["segments"]
+    )  # ... and so the marker still decodes
+
+
+def test_repin_squares_a_dragged_arrow_back_onto_the_edge():
+    """The drag half of the marker: the arrow is dropped 3 mm inside the area
+    and 4 mm along it, and the repin puts it back on the edge under the drop."""
+    placed = _place(area_marker._local_segments(30.0, 12.0, 0.3), dx=100.0, dy=50.0)
+    dragged = _drag(placed, 4, 4.0, -3.0)
+    arrow, dots, pinned = area_marker.repin_geometry(dragged)
+    assert pinned["edge"] == "bottom"
+    repinned = area_marker._decode_segments(dragged[:4] + arrow)
+    assert repinned["feed"] == (98.0, 56.0)  # 94 + 4, back on the edge
+    assert dots[0][0] == (98.0, 56.0)  # the dot rides with it
+
+
+def test_repin_moves_the_feed_to_another_edge():
+    """Drag the arrow across the rectangle and the feed edge follows: the
+    marker feeds from wherever the user put the arrow."""
+    placed = area_marker._local_segments(30.0, 12.0, 0.5)
+    dragged = _drag(placed, 4, -14.0, -6.0)  # over to the left edge
+    arrow, _dots, pinned = area_marker.repin_geometry(dragged)
+    assert pinned["edge"] == "left"
+    assert area_marker._decode_segments(placed[:4] + arrow)["edge"] == "left"
+
+
+def test_repin_follows_an_edge_that_was_dragged():
+    """The other drag: the user pulls the rectangle's bottom edge up (a corner
+    handle), leaving the arrow behind. The repin lands it on the edge's new
+    place, at the same position along it."""
+    placed = area_marker._local_segments(30.0, 20.0, 0.3)
+    shallow = area_marker._rect_segments((-15.0, -10.0, 15.0, 2.0)) + placed[4:]
+    arrow, _dots, pinned = area_marker.repin_geometry(shallow)
+    assert pinned["edge"] == "bottom"
+    d = area_marker._decode_segments(shallow[:4] + arrow)
+    assert d["feed"] == (-6.0, 2.0)  # same x, the edge's new y
+    assert math.isclose(d["frac"], 0.3, abs_tol=1e-6)
+
+
+def test_repin_keeps_the_drawn_triangle_width_unless_given_one():
+    placed = area_marker._local_segments(30.0, 12.0, 0.3, tri_w_mm=4.0)
+    arrow, _dots, _pinned = area_marker.repin_geometry(_drag(placed, 4, 1.0, -1.0))
+    kept = area_marker._decode_segments(placed[:4] + arrow)
+    assert math.isclose(kept["tri_w_mm"], 4.0, abs_tol=1e-6)
+    arrow, _dots, _pinned = area_marker.repin_geometry(placed, tri_w_mm=1.5)
+    asked = area_marker._decode_segments(placed[:4] + arrow)
+    assert math.isclose(asked["tri_w_mm"], 1.5, abs_tol=1e-6)
+
+
+def test_repin_writes_back_in_the_board_frame_of_a_rotated_marker():
+    """Pinning happens in the rectangle's own frame; what comes back is board
+    frame, so a marker the user turned off-grid keeps its rotation and its
+    arrow still decodes as attached and inward-pointing."""
+    turned = markergeom.rotate_segments(
+        _place(area_marker._local_segments(30.0, 12.0, 0.3), dx=100.0, dy=50.0),
+        18.0,
+        (100.0, 50.0),
+    )
+    dragged = _drag(turned, 4, 2.0, -2.0)
+    arrow, _dots, _pinned = area_marker.repin_geometry(dragged)
+    d = area_marker._decode_segments(dragged[:4] + arrow)
+    assert math.isclose(d["rot_deg"], 18.0, abs_tol=1e-3)
+    assert d["edge"] == "bottom"
+    assert math.isclose(d["w_mm"], 30.0, abs_tol=1e-3)
+
+
+def test_repin_rejects_a_marker_that_is_not_one():
+    try:
+        area_marker.repin_geometry(area_marker._local_segments(30.0, 12.0, 0.3)[:6])
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "rectangle + a feed" in str(exc), str(exc)
+
+
+# --------------------------------------------------------------------------- #
+# Squaring an outline a drag pulled out of shape
+# --------------------------------------------------------------------------- #
+def _rect_corners(x0, y0, x1, y1, deg=0.0):
+    corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return [markergeom.rotate_pt(p, deg, (0.0, 0.0)) for p in corners]
+
+
+def _is_square(corners):
+    for i in range(4):
+        a, b, c = corners[i - 1], corners[i], corners[(i + 1) % 4]
+        u = (a[0] - b[0], a[1] - b[1])
+        v = (c[0] - b[0], c[1] - b[1])
+        if abs(u[0] * v[0] + u[1] * v[1]) > 1e-6:
+            return False
+    return True
+
+
+def test_square_outline_leaves_a_rectangle_exactly_alone():
+    for deg in (0.0, 90.0, 31.5):
+        corners = _rect_corners(-15.0, -6.0, 15.0, 6.0, deg)
+        assert area_marker.square_outline(corners) == corners, deg
+
+
+def test_square_outline_reads_a_dragged_corner_as_a_rectangle_drag():
+    """One vertex moved: the corner opposite it anchors, the dragged corner
+    stays exactly where it was dropped, and the two beside it follow — which is
+    what KiCad's own rectangle handles do."""
+    for deg in (0.0, 25.0, -40.0):
+        corners = _rect_corners(0.0, 0.0, 30.0, 12.0, deg)
+        dragged = list(corners)
+        dragged[2] = (corners[2][0] + 4.0, corners[2][1] - 3.0)
+        squared = area_marker.square_outline(dragged)
+        assert _is_square(squared), deg
+        assert squared[0] == corners[0], deg  # the anchor did not move
+        for got, want in zip(squared[2], dragged[2]):
+            assert math.isclose(got, want, abs_tol=1e-9), deg
+
+
+def test_square_outline_reads_a_dragged_edge_too():
+    """Two corners moving together is an edge drag, and squares up the same
+    way: the edge lands where it was dropped and the other three sides
+    follow."""
+    corners = _rect_corners(0.0, 0.0, 30.0, 12.0)
+    dragged = [(0.0, -4.0), (30.0, -4.0), (30.0, 12.0), (0.0, 12.0)]
+    squared = area_marker.square_outline(dragged)
+    assert _is_square(squared)
+    assert squared == dragged  # already a rectangle: nothing to square
+    assert corners != dragged
+
+
+def test_square_outline_falls_back_to_the_bounding_box():
+    """Two independent drags: no single corner explains the shape, so the area
+    becomes the box around what was drawn rather than an error."""
+    corners = [(0.0, 0.0), (30.0, 2.0), (28.0, 12.0), (-1.0, 9.0)]
+    squared = area_marker.square_outline(corners)
+    assert _is_square(squared)
+    assert len(squared) == 4
+
+
+def test_square_outline_squares_a_polygon_that_grew_a_corner():
+    """KiCad's polygon editor can *add* a vertex; five corners is not a
+    rectangle drag either, and squares up the same way."""
+    corners = [(0.0, 0.0), (15.0, -2.0), (30.0, 0.0), (30.0, 12.0), (0.0, 12.0)]
+    squared = area_marker.square_outline(corners)
+    assert len(squared) == 4 and _is_square(squared)
+
+
+# --------------------------------------------------------------------------- #
+# The marker's whole rotation, in the degrees KiCad means
+# --------------------------------------------------------------------------- #
+def test_feed_angle_is_zero_for_a_marker_as_placed():
+    d = area_marker._decode_segments(area_marker._local_segments(30.0, 12.0, 0.3))
+    assert area_marker.feed_angle_deg(d) == 0.0
+
+
+def test_feed_angle_counts_counter_clockwise_on_screen():
+    """KiCad's own convention, so the field reads like a footprint's angle. A
+    quarter turn counter-clockwise carries the bottom (feed) edge round to the
+    right-hand side; the test's own _place turns the other way, so its quarter
+    turns count 270, 180, 90."""
+    local = area_marker._local_segments(30.0, 12.0, 0.3)
+    for turns, angle in ((0, 0.0), (1, 270.0), (2, 180.0), (3, 90.0)):
+        d = area_marker._decode_segments(_place(local, quarter_turns=turns))
+        assert area_marker.feed_angle_deg(d) == angle, turns
+
+
+def test_feed_angle_carries_the_off_grid_residual():
+    turned = markergeom.rotate_segments(  # 30 deg clockwise on screen
+        area_marker._local_segments(30.0, 12.0, 0.3), 30.0
+    )
+    d = area_marker._decode_segments(turned)
+    assert math.isclose(area_marker.feed_angle_deg(d), 330.0, abs_tol=1e-3)
 
 
 # --------------------------------------------------------------------------- #

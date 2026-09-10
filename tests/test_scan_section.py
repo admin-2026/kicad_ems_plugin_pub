@@ -26,7 +26,6 @@ sizing = load("design.sizing")
 scan_store = load("design.scan_store")
 wizard_scan = load("design.wizard_scan")
 scan_section = load("gui.sections.scan")
-solver = load("gui.sections.solver")
 
 F0 = 2.45
 
@@ -329,7 +328,7 @@ def test_an_unusable_row_says_so_instead_of_guessing():
 
 
 # --------------------------------------------------------------------------- #
-# Persisted rows (gui.settings)
+# Persisted rows (settings)
 # --------------------------------------------------------------------------- #
 def _tuned(design):
     """A section whose rows the user has moved off their seeds: every row
@@ -609,11 +608,11 @@ def _stub_pass(section, spec):
     """Let ``_start`` go through without a board or a solver: everything it
     does with either is out of scope for the results it keeps.
 
-    These passes are started and never finished, and the shell's list of live
-    passes is process-wide (gui.sections.solver -- one shell per editor), so
-    each one starts from an empty shell; otherwise the pass the previous test
-    left running would warn about starting this one (test_concurrent_runs)."""
-    solver.SolverSection._live.clear()
+    These passes are started and never finished, and a claim is a file beside
+    the board (sim.runlock), so each one is pointed at no board at all --
+    otherwise the pass the previous test left running would warn about
+    starting this one (test_concurrent_runs)."""
+    section._sim_dir = lambda: None
     planned = wizard_scan.plan(spec)
     section._prepare = lambda board, grid_only: (
         spec,

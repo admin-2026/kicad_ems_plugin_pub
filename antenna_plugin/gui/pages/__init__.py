@@ -7,10 +7,11 @@ Every page also describes its own sidebar tab (``tab_icon`` / ``tab_hint`` /
 ``tab_at_bottom``), so the shell builds the sidebar without knowing what any of
 them is: adding a view is a module here plus a line in the shell's page list.
 
-There are three page *classes* but any number of pages: the simulate view, one
-DesignWizardPage per antenna design in design.registry (the shell builds them in
-a loop; a design's page differs only by the design object it carries), and the
-About view.
+Two page *classes* here but any number of pages: the simulate view and one
+DesignWizardPage per antenna design in design.registry (the shell builds them
+in a loop; a design's page differs only by the design object it carries). The
+About view is the core's, re-exported here with the base so the shell's page
+list reads as one import.
 
 The Pattern-frequency, Speed and Advanced sections and the feed-width /
 Feed-layer picks appear on the simulate and designer pages as views onto one
@@ -27,13 +28,11 @@ Modules:
                  + advanced + pre-flight banner)
     wizard     — DesignWizardPage, one antenna designer (form + area + speed +
                  scan + results + footprint + advanced), driven by its design
-    info       — InfoPage, the About view (version table)
     host       — WizardHost, the wizard sections' facade onto their page
 """
 
-from .base import BookPage
+from ...emkit.gui.pages import BookPage, InfoPage
 from .designform import DesignFormPage
-from .info import InfoPage
 from .simulate import SimulatePage
 from .wizard import DesignWizardPage
 

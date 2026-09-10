@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!-- Pre-flight guide for the "no-outline" problem (see simulate.preflight).
+     Styled by emkit/assets/palette.css + help_theme.css, linked
+     relative to this file: the help viewer loads the guide from the install
+     tree, where those sheets are siblings, so nothing is templated or copied
+     at display time. Keep it plain HTML -- no module scripts, no CDN, no
+     network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin help — Board outline missing</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Board outline missing</h1>
+<p class="lead">The board has no outline on the
+<span class="path">Edge.Cuts</span> layer (or no enabled copper layer), so the
+simulator cannot tell where the substrate ends.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>In the PCB editor, select the <span class="path">Edge.Cuts</span> layer
+      in the <em>Layers</em> panel (right-hand side).</li>
+  <li>Draw a <strong>closed</strong> outline around the design — the
+      rectangle tool (<span class="path">Place &gt; Draw&nbsp;Rectangle</span>)
+      is enough for most boards. Lines and arcs work too as long as their ends
+      meet.</li>
+  <li>Leave the antenna's keep-out area inside the outline; the outline is the
+      physical board edge, not the copper.</li>
+  <li>Save the board (<span class="path">Ctrl+S</span>).</li>
+</ol>
+
+<div class="note"><strong>Why it blocks the run:</strong> the gerber export
+gives the simulator the substrate shape from
+<span class="path">Edge.Cuts</span>. Without it there is no dielectric volume
+to mesh — the run would fail while plotting the gerbers anyway, so it is
+stopped up front.</div>
+</main>
+</body>
+</html>

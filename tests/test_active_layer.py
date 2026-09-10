@@ -45,7 +45,7 @@ class _MouseEvent:
 wx.MouseEvent = _MouseEvent
 wx.GetTopLevelWindows = lambda: []  # the frame is found by parent walk here
 
-activelayer = load("gui.activelayer")
+activelayer = load("emkit.gui.activelayer")
 
 
 # --------------------------------------------------------------------------- #
@@ -133,7 +133,7 @@ class _Frame(_Panel):
 
 
 class _Window:
-    """A plugin window: the editor frame is its ancestor (place.editor_frame
+    """A plugin window: the editor frame is its ancestor (editor.editor_frame
     walks up to it)."""
 
     def __init__(self, frame):

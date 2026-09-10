@@ -1,23 +1,17 @@
-"""Unit tests for antenna_plugin.gui.settings (the flat-YAML persistence).
+"""Unit tests for emkit.settings (the flat-YAML form file).
 
 The pages' own snapshot/restore need wx widgets (tests/test_scan_section.py
 covers the wizard's rows), so these cover what is pure: the string round-trip
-and the page aggregation a save writes. Load by path to skip the package
-__init__ (which imports pcbnew):  python3 tests/test_settings.py
+and the page aggregation a save writes. What the file *means* to a run is
+tests/test_formparams.py. Loaded through the bare package, which
+skips the __init__ that imports pcbnew:  python3 tests/test_settings.py
 """
 
-import importlib.util
 import pathlib
 
-_SRC = (
-    pathlib.Path(__file__).resolve().parents[1]
-    / "antenna_plugin"
-    / "gui"
-    / "settings.py"
-)
-_spec = importlib.util.spec_from_file_location("settings", _SRC)
-settings = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(settings)
+from bare_package import load
+
+settings = load("emkit.settings")
 
 
 def test_dump_parse_roundtrip():

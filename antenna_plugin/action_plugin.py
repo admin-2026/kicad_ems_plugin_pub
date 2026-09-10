@@ -1,42 +1,15 @@
-"""Action plugin definition shown on the pcbnew toolbar."""
+"""This plugin's toolbar button: it opens the Antenna Designer window.
 
-import os
+Everything else about the button -- its name, its icon, the version in its
+tooltip, the old-KiCad advisory it shows first -- is the core's
+``emkit.action_plugin.PluginBase`` reading the product manifest.
+"""
 
-import pcbnew
-
-from . import __version__
-
-
-class AntennaPlugin(pcbnew.ActionPlugin):
-    """Toolbar button that opens the native Antenna Designer dialog."""
-
-    def defaults(self):
-        self.name = "Antenna Designer"
-        self.category = "Antenna"
-        self.description = f"Open the antenna EM-simulation dialog (v{__version__})"
-        self.show_toolbar_button = True
-        self.icon_file_name = os.path.join(os.path.dirname(__file__), "icon.png")
-
-    def Run(self):
-        try:
-            from .kicad.version import kicad_version_warning
-
-            warning = kicad_version_warning()
-            if warning:
-                _notify(warning)  # say it, then open anyway
-
-            from . import gui
-
-            gui.show()
-        except Exception as exc:
-            _notify(f"Antenna Designer failed to open: {exc}")
+from .emkit.action_plugin import PluginBase
 
 
-def _notify(text):
-    """Best-effort status message; never fatal if wx is unavailable."""
-    try:
-        import wx
+class AntennaPlugin(PluginBase):
+    def open(self):
+        from . import gui
 
-        wx.LogMessage(text)
-    except Exception:
-        print(text)
+        gui.show()

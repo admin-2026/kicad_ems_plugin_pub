@@ -5,7 +5,11 @@ copper over existing metal in the area, feed-axis grounding / shielding, and
 copper stacked over the area) against the live board and lists them as
 **warnings** in the shared banner strip (banner.BannerSection). Unlike the
 simulate view's PreflightBanner these never gate anything: the checks flag
-reasons to look, not blockers (see dev_docs/area-checks.md). It refreshes when the
+reasons to look, not blockers (see dev_docs/area-checks.md). Any blocker in
+this strip is therefore not one of them -- it is what would stop this page's
+scan, which the base puts above them on every page that starts runs
+(``starts_runs``: the board's pre-flight and this machine's container).
+It refreshes when the
 wizard is shown, when the area marker is reshaped/placed, when the previewed
 candidate changes, when a scan or grid pass is started, and when the window
 regains focus (the user may move the marker in the editor and come back).
@@ -38,12 +42,20 @@ the page's viewer hub -- for the wizard that is the simulate view's, borrowed
 like its result windows (pages.wizard.DesignWizardPage.viewers).
 """
 
+from ...emkit.gui.sections.banner import BannerSection
 from ...markers import area_checks
-from .banner import BannerSection
 
 
 class AreaBanner(BannerSection):
     _check_name = "area"
+    # A designer starts as many solves as its sweep has candidates, and every
+    # blocker a run has, a scan has: an unsaved board, a stackup with no
+    # thicknesses, a container that is not there. So this banner carries them
+    # too (BannerSection._run_blockers). They gate nothing here -- the scan
+    # refuses on its own before it plots a gerber, in the same words
+    # (ScanSection._prepare) -- so what these rows add is being told before the
+    # button is pressed rather than after.
+    starts_runs = True
 
     def _collect(self):
         import pcbnew

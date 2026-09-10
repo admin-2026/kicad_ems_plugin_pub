@@ -13,7 +13,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from bare_package import ROOT, load, run_module_tests  # noqa: E402
+from bare_package import PKG, load, run_module_tests  # noqa: E402
 
 base = load("design.base")
 footprints = load("design.footprints")
@@ -67,7 +67,7 @@ def test_every_design_is_fully_described():
             "footprint_prefix",
         ):
             assert getattr(design, field), f"{design.key}.{field}"
-        assert (ROOT / "antenna_plugin" / design.icon).is_file(), design.icon
+        assert (PKG / design.icon).is_file(), design.icon
 
 
 def test_every_design_has_a_length_and_a_width_parameter():
@@ -88,12 +88,107 @@ def test_every_parameter_ships_the_illustration_it_names():
     # The Scan section shows Param.icon beside the row (gui/sections/scan.py),
     # and a name that doesn't resolve is a picture silently missing from a
     # dialog -- so the artwork is checked here, where a typo fails loudly. The
-    # PNGs are drawn by tools/icons/scan.py.
+    # PNGs are drawn by tools/icons/designs/<key>.py.
     for design in registry.DESIGNS:
         for p in design.params:
             assert p.icon, f"{design.key}.{p.key} has no illustration"
-            path = ROOT / "antenna_plugin" / "assets" / "icons" / p.icon
+            path = PKG / "assets" / "icons" / p.icon
             assert path.is_file(), f"{design.key}.{p.key}: {p.icon}"
+
+
+def test_every_parameter_reads_as_a_sentence_too():
+    """The drawing's counterpart, for the reader who cannot see it: the
+    command line's ``guide`` prints ``Param.reading`` and a knob without one is
+    a row an agent is handed with a label and a number and nothing else."""
+    for design in registry.DESIGNS:
+        for p in design.params:
+            assert p.reading, f"{design.key}.{p.key} has no reading"
+            assert p.reading.strip().endswith("."), f"{design.key}.{p.key}"
+
+
+def test_the_wizard_never_shows_a_reading():
+    """The other half of that field's scope, and the reason it can exist at
+    all. ``Param.hint`` was deleted in August 2026 because a drawing explains a
+    knob better than a sentence does *at a dialog*; ``reading`` is the same
+    fact for a reader with no screen, and it is only allowed back because
+    nothing under a ``gui/`` reads it. A guard, not a convention -- the wizard
+    growing a paragraph under every row is exactly the thing that was
+    removed."""
+    guilty = []
+    for gui in (PKG / "gui", PKG / "emkit" / "gui"):
+        for path in sorted(gui.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            for number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1
+            ):
+                if ".reading" in line:
+                    guilty.append(f"{path.relative_to(PKG)}:{number}: {line.strip()}")
+    assert not guilty, (
+        "a gui/ module reads Param.reading; the row's picture is what the "
+        "wizard says about a knob:\n  " + "\n  ".join(guilty)
+    )
+
+
+def test_every_design_guides_itself():
+    """``guide`` is provided once in base.py and walked off the registry, so a
+    fourth topology is guided by the line it already adds to registry.py. What
+    it has to hold onto is that it names *everything*: a knob missing from the
+    page is one an agent will never set."""
+    for design in registry.DESIGNS:
+        text = design.guide(F0)
+        assert design.name in text and design.key in text, design.key
+        assert design.summary in text and design.wiring in text, design.key
+        # The design module's docstring is the explanation, drawing included
+        # -- the one place in this package where a docstring is load-bearing,
+        # and not the class's, which would inherit base.py's for every design.
+        topology = sys.modules[type(design).__module__].__doc__
+        assert topology, design.key
+        assert topology.strip().splitlines()[0] in text, design.key
+        for p in design.params:
+            assert p.key in text and p.label in text, (design.key, p.key)
+            assert p.reading in text, (design.key, p.key)
+        for c in design.columns:
+            assert c.key in text, (design.key, c.key)
+
+
+def test_a_guides_millimetres_are_the_seeds_at_that_frequency():
+    """The one arithmetic claim a design's page makes. Read at two
+    frequencies, because a hard-coded number would pass at one of them."""
+    for design in registry.DESIGNS:
+        for f0 in (F0, 0.868):
+            text = design.guide(f0)
+            for key, (lo, hi, value) in design.seed_values(f0).items():
+                for mm in (lo, value, hi):
+                    assert base.mm(mm) in text, (design.key, key, f0)
+
+
+def test_no_scan_illustration_is_shipped_that_no_parameter_claims():
+    """The other direction: artwork nothing names. A renamed knob leaves its
+    old PNG behind, and a file nobody deletes is a file somebody later copies
+    -- so the shipped set has to be exactly what the registry asks for."""
+    claimed = {p.icon for design in registry.DESIGNS for p in design.params}
+    shipped = {
+        path.name
+        for path in (PKG / "assets" / "icons").iterdir()
+        if path.name.startswith("scan_") and path.suffix == ".png"
+    }
+    stray = sorted(shipped - claimed)
+    assert not stray, f"scan artwork no parameter claims: {', '.join(stray)}"
+
+
+def test_every_design_illustrates_its_own_knobs_and_no_one_elses():
+    """A scan illustration is named ``scan_<design>_<param>.png`` (the frame
+    tools/icons/frames.py writes it under), so the design half of every shipped
+    name has to be a registered design -- an illustration filed under a design
+    key that no longer exists is one no row can ever show."""
+    keys = {d.key for d in registry.DESIGNS}
+    for design in registry.DESIGNS:
+        for p in design.params:
+            assert p.icon == f"scan_{design.key}_{p.key}.png", (design.key, p.key)
+    for path in (PKG / "assets" / "icons").iterdir():
+        if path.name.startswith("scan_"):
+            assert path.stem.split("_")[1] in keys, path.name
 
 
 def test_unknown_parameter_names_the_design():

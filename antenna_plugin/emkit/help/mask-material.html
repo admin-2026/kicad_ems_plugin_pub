@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<!-- Pre-flight guide for the "mask-material" problem (simulate.mask_problems).
+     Styled by emkit/assets/palette.css + help_theme.css, linked
+     relative to this file: the help viewer loads the guide from the install
+     tree, where those sheets are siblings, so nothing is templated or copied
+     at display time. Keep it plain HTML -- no module scripts, no CDN, no
+     network. A stylesheet link resolves fine from a file:// page; ES-module
+     fetches are what the embedded WebView CORS-blocks. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin help — Solder mask material missing</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Solder mask material missing</h1>
+<p class="lead">This run includes the solder mask, but the coating has no
+thickness or no relative permittivity (<em>Epsilon&nbsp;R</em>,
+ε<sub>r</sub>) — so there is nothing to mesh it with.</p>
+
+<h2>Three ways out</h2>
+<ol>
+  <li><strong>Say what the mask is.</strong> Open
+      <span class="path">Advanced &gt; Materials &gt; Solder mask</span> and
+      pick a coating, or <em>Custom…</em> and type ε<sub>r</sub> and the loss
+      tangent from your fabricator's datasheet. <em>Save as…</em> keeps it
+      under a name of your own, on every board.
+      <table>
+        <tr><th>Coating</th><th>ε<sub>r</sub> (typ.)</th><th>tan δ</th></tr>
+        <tr><td>LPI solder mask</td><td>3.2 – 4.0</td><td>0.02 – 0.03</td></tr>
+        <tr><td>Dry-film solder mask</td><td>3.8 – 4.2</td><td>0.03</td></tr>
+        <tr><td>Polyimide coverlay</td><td>3.4 – 3.6</td><td>0.008</td></tr>
+      </table></li>
+  <li><strong>Let the board say it.</strong> Open <span class="path">File &gt;
+      Board&nbsp;Setup &gt; Board&nbsp;Stackup &gt; Physical&nbsp;Stackup</span>,
+      give the <em>F.Mask</em> / <em>B.Mask</em> rows a thickness (typically
+      0.01 – 0.04&nbsp;mm) and an ε<sub>r</sub>, press <em>OK</em> and
+      <strong>save the board</strong> (<span class="path">Ctrl+S</span>). The
+      thickness has no other source — a picked material supplies ε<sub>r</sub>
+      and the loss tangent, never how thick the coating is.</li>
+  <li><strong>Leave the mask out.</strong> Untick <span class="path">Advanced
+      &gt; Materials &gt; Simulate the solder mask coating</span>. The board is
+      then solved bare — which is how it starts out, and much the faster
+      run.</li>
+</ol>
+
+<div class="note"><strong>Why it isn't defaulted:</strong> a trace's fringing
+field runs through whatever sits on top of it, so a coating with an invented
+ε<sub>r</sub> moves the resonance by tens of MHz in a direction nobody chose —
+and a mask meshed at a guessed thickness is a different board from the one on
+the bench. The run stops instead of guessing.</div>
+</main>
+</body>
+</html>

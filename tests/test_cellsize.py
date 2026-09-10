@@ -16,8 +16,8 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from bare_package import load, run_module_tests  # noqa: E402
 
-knobs = load("cellsize.knobs")
-caption = load("cellsize.caption")
+knobs = load("emkit.cellsize.knobs")
+caption = load("emkit.cellsize.caption")
 
 
 def test_blank_zero_and_junk_all_mean_leave_it_to_the_solver():

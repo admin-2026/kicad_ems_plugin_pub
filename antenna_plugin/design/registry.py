@@ -10,9 +10,10 @@ Designs are stateless, so one shared instance each is all anyone needs.
 
 from .ifa import MeanderedIFADesign
 from .lmonopole import LMonopoleDesign
+from .meander import MeanderedMonopoleDesign
 
 # In sidebar / menu order.
-DESIGNS = (LMonopoleDesign(), MeanderedIFADesign())
+DESIGNS = (LMonopoleDesign(), MeanderedIFADesign(), MeanderedMonopoleDesign())
 
 _BY_KEY = {d.key: d for d in DESIGNS}
 

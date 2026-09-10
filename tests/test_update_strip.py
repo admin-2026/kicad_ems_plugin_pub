@@ -16,8 +16,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import wx_stub  # noqa: F401  (installs the stand-in wx before the import below)
 from bare_package import load, run_module_tests  # noqa: E402
 
-strip_mod = load("update.strip")
-model = load("update.model")
+strip_mod = load("emkit.update.strip")
+model = load("emkit.update.model")
 
 RELEASE = model.Release(
     version="0.2.0", url="https://example.invalid/releases/0.2.0", name="0.2.0"

@@ -33,7 +33,7 @@ Subclass contract (on top of base.BookPage's):
     (a page's own settings restore does exactly what the model's does).
 """
 
-from .base import BookPage
+from ...emkit.gui.pages.base import BookPage
 
 
 class DesignFormPage(BookPage):

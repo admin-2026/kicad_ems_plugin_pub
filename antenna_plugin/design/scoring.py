@@ -164,8 +164,20 @@ def vswr(result, target):
 
 
 def bandwidth(result, target):
-    """The -10 dB match bandwidth vs the band the application needs. Without a
-    band (a hand-typed frequency) the value is shown but not judged."""
+    """The match bandwidth around the resonance the row above reports, vs the
+    band the application needs. Without a band (a hand-typed frequency) the
+    value is shown but not judged.
+
+    Measured at the depth the *target* asks for (``measure.match_db``), not at
+    a fixed -10 dB: a band a target must hold at 15 dB is not held by a 10 dB
+    one, and the -10 dB span is always the wider of the two -- which is how a
+    GPS antenna matched to 12 dB used to pass this row. The threshold is not
+    repeated in the cell: the target line over the table already names the
+    return loss it belongs to.
+
+    ``None`` -- the dip never reaches that depth -- stays "shown, not judged".
+    A target that strict is failed on the Return loss row above, which is where
+    the shortfall is a number rather than an absence."""
     bw = result.get("bw_mhz")
     if bw is None:
         return Verdict(NONE, "—")
@@ -202,6 +214,15 @@ PROPERTIES = (
     ("bandwidth", "Bandwidth", bandwidth),
     ("impedance", "Input Z", impedance),
 )
+
+
+# The properties read *at the target frequency*, as against the two read off
+# wherever the sweep resonates. One table holds both, and a reader who is not
+# told takes the whole of it for one operating point -- so serialize says, per
+# row, which frequency that row was measured at (the ``at`` field). Kept here
+# rather than as a fourth element of PROPERTIES, which three callers unpack as
+# a triple.
+_AT_F0 = ("return_loss", "vswr", "impedance")
 
 
 def evaluate(result, target):
@@ -251,8 +272,16 @@ def target_from_application(app):
 def serialize(result, target):
     """Evaluate ``result`` for a data-only consumer (the HTML scan views' run
     meta): ``overall`` status + glyph and a per-property list
-    ``[{key,label,status,glyph,text}, ...]`` in table order. The pass/warn/fail
-    logic and glyphs stay here; the JS only paints what this returns."""
+    ``[{key,label,status,glyph,text,at}, ...]`` in table order. The
+    pass/warn/fail logic and glyphs stay here; the JS only paints what this
+    returns.
+
+    ``at`` is the frequency that row was read at, empty for the rows that
+    *are* a frequency (see ``_AT_F0``). A renderer stacking the rows vertically
+    -- a single run's table, where they read as one narrative rather than as
+    columns over one target -- shows it; the scan table, where every row is
+    already known to be against one target, ignores it.
+    """
     verdicts = evaluate(result, target)
     return {
         "overall": verdicts["overall"],
@@ -264,6 +293,7 @@ def serialize(result, target):
                 "status": verdicts[key].status,
                 "glyph": GLYPH[verdicts[key].status],
                 "text": verdicts[key].text,
+                "at": f"{target.f0_ghz:g} GHz" if key in _AT_F0 else "",
             }
             for key, label, _fn in PROPERTIES
         ],

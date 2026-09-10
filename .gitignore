@@ -9,6 +9,9 @@ venv/
 env/
 
 # Tooling / caches
+# .docker-image-tag is what `make docker-smoke` writes the image tag to and
+# deletes on the way out -- an interrupted run leaves one behind.
+.docker-image-tag
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

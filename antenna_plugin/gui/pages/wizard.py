@@ -68,17 +68,19 @@ via wizard_scan.
 
 import wx
 
-from ..sections import (
+from ...emkit.gui.sections import (
     AdvancedSection,
+    IntroSection,
+    LogSection,
+    SpeedSection,
+)
+from ..sections import (
     AreaBanner,
     AreaSection,
     FootprintSection,
-    IntroSection,
-    LogSection,
     PatternFreqSection,
     ScanResultsSection,
     ScanSection,
-    SpeedSection,
 )
 from .designform import DesignFormPage
 from .host import WizardHost
@@ -152,21 +154,19 @@ class DesignWizardPage(DesignFormPage):
         self.banner.refresh()
 
     def on_activate(self, visible):
-        """The window regained the focus: the advisory area banner tracks the
-        marker the user may have just moved in the editor, so re-check it --
-        and re-read the marker itself with it, since the sliders, the status
-        line and the Place/Show button are all a reading of a marker that may
-        have been moved, reshaped or deleted while this window was in the
-        background. Only while this designer is the page on screen and no scan
-        of its own is mid-flight (a scan owns the banner).
+        """The window regained the focus -- which is exactly when the user
+        comes back from the PCB editor, where the area marker is dragged into
+        shape. So re-read it (``area.sync_from_board``: the feed arrow is
+        repinned onto the rectangle as they left the two, the status line and
+        the Place/Show button re-derived, the drawn candidate redrawn against
+        the new area) and re-check the advisory banner over it. Only while this
+        designer is the page on screen and no scan of its own is mid-flight (a
+        scan owns the banner).
 
-        The marker is re-read through ``refresh_status`` rather than the
-        section's whole ``refresh``: a focus switch is not a page switch, so
-        the board outline behind the slider ranges is left as it was measured
-        and the drawn preview is left alone -- and the banner below is refreshed
-        once, here, instead of a second time through the preview's own path."""
+        This is the whole board→plugin direction: a drag is KiCad's own
+        interaction, with KiCad's own undo, and nothing here polls for it."""
         if visible and not self.scan.running:
-            self.area.refresh_status(sync=True)
+            self.area.sync_from_board()
             self.banner.refresh()
 
     def refresh_area_checks(self):
@@ -181,7 +181,7 @@ class DesignWizardPage(DesignFormPage):
         windows are the simulate page's; it tears them down."""
         self.scan.shutdown()
 
-    # --- persisted form (gui.settings) ----------------------------------------
+    # --- persisted form (emkit.settings) -----------------------------------
     # This page's share of the per-project settings file: its scan rows alone --
     # the sweep bounds and fixed values are hand-tuned to one board's area, so
     # they come back on the next launch (the section namespaces its keys by

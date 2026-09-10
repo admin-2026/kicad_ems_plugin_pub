@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!-- Pre-flight guide for the "dielectric-thickness" problem
+     (simulate.preflight). Styled by emkit/assets/palette.css +
+     help_theme.css, linked relative to this file: the help viewer loads the
+     guide from the install tree, where those sheets are siblings, so nothing
+     is templated or copied at display time. Keep it plain HTML -- no module
+     scripts, no CDN, no network. A stylesheet link resolves fine from a
+     file:// page; ES-module fetches are what the embedded WebView CORS-blocks
+     (see simulate.localize). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin help — Dielectric thickness missing</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>Dielectric thickness missing</h1>
+<p class="lead">A dielectric (core or prepreg) layer in the saved stackup has
+no thickness. The banner names the layer, e.g.
+<span class="path">dielectric&nbsp;1</span>.</p>
+
+<h2>How to fix it</h2>
+<ol>
+  <li>Open <span class="path">File &gt; Board&nbsp;Setup &gt;
+      Board&nbsp;Stackup &gt; Physical&nbsp;Stackup</span>.</li>
+  <li>Find the named dielectric row and enter its <em>Thickness</em>. Mind
+      sublayers: a KiCad dielectric can be split into several plies (core +
+      prepreg) with the <em>add&nbsp;sublayer</em> control — every ply needs
+      its own thickness. The plugin sums them into one gap.</li>
+  <li>If you don't have a fabricator stackup sheet: a standard two-layer
+      1.6&nbsp;mm FR-4 board has a single ≈1.51&nbsp;mm core between the two
+      foils. For multilayer boards, use your fab's published stackup — the
+      per-gap thicknesses vary widely.</li>
+  <li>Press <em>OK</em> and <strong>save the board</strong>
+      (<span class="path">Ctrl+S</span>).</li>
+</ol>
+
+<div class="note"><strong>Why it isn't defaulted:</strong> the gap between the
+antenna layer and its ground is the single strongest knob on the simulated
+input impedance and bandwidth. A guessed thickness would shift the resonance
+without any visible warning, so the run stops until the real value is in the
+file.</div>
+</main>
+</body>
+</html>

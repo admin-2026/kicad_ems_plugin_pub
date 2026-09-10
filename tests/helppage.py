@@ -37,7 +37,7 @@ def assert_page_loads(filename, label=None):
     (``help/<filename>``); returns its text."""
     import pathlib
 
-    simulate = load("sim.simulate")
+    simulate = load("emkit.sim.simulate")
     pid = label or filename
     path = simulate.guide_page(filename)
     assert path is not None, f"help page missing for {pid}"

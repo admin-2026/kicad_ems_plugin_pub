@@ -51,8 +51,9 @@ class WizardHost:
         return self._page.marker_layer_n()
 
     def current_application(self):
-        """The design target the form describes (catalog pick or synthesized
-        Custom), for scoring scan candidates."""
+        """The design target the form describes (a picked application --
+        built-in or saved -- or a synthesized Custom), for scoring scan
+        candidates."""
         return self._page.form.current_application()
 
     def run_params(self, run_dir):

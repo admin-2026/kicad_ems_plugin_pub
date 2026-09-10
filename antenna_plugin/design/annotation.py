@@ -35,8 +35,8 @@ Pure: no wx, no pcbnew (tests/test_annotation.py runs it off KiCad).
 import re
 from typing import NamedTuple
 
-from .. import versions
-from ..kicad import modtext
+from ..emkit import versions
+from ..emkit.kicad import modtext
 
 # The layer the record is written on, and the pitch of the stacked lines for
 # modtext's 1 mm font.

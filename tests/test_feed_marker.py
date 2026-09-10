@@ -7,18 +7,14 @@ one-circle gerber. The package is assembled by hand around the real modules
 relative import of markergeom works:  python3 tests/test_feed_marker.py
 """
 
-import importlib
 import math
 import pathlib
-import sys
-import types
+
+from bare_package import load
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
-feed_marker = importlib.import_module("antenna_plugin.markers.feed_marker")
+feed_marker = load("emkit.markers.feed_marker")
 
 
 def _place(segments, dx=0.0, dy=0.0, angle_deg=0.0):
@@ -163,7 +159,7 @@ def test_feed_dict_point_plus_direction():
 def test_align_rotation_for_rotated_marker():
     # A marker rotated off-grid decodes to a diagonal direction; the aligning
     # board rotation is the residual back to the nearest axis.
-    markergeom = importlib.import_module("antenna_plugin.markers.markergeom")
+    markergeom = load("emkit.markers.markergeom")
     segs = _place(feed_marker._local_segments(1.0), dx=120.0, dy=80.0, angle_deg=30.0)
     _x, _y, _width, dx, dy = feed_marker._decode_segments(segs)
     # KiCad -> gerber flips Y (as find_markers does): the marker's 30° in

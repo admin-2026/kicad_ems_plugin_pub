@@ -21,7 +21,7 @@ only metal the antenna itself would land on is worth a warning there.
         copper overlaps feed-layer metal *inside* the area rectangle. It is
         asked about copper somebody committed to -- the sweep of a started
         scan / grid pass, or the candidate being placed -- never about one
-        that only sits in the wizard's sliders, which splices nothing and so
+        that only sits in the wizard's scan rows, which splices nothing and so
         overlaps nothing yet. Outside the rectangle, overlap is expected --
         the feed / ground stubs must reach the surrounding pour -- so nothing
         outside is judged, and neither is the
@@ -62,8 +62,9 @@ layer (``sim.simulate``) so the wizard's banner renders these the same way as
 the board-level blockers.
 """
 
-from ..sim.simulate import Problem
-from . import area_marker, feed_marker, markergeom
+from ..emkit.markers import feed_marker, markergeom, preview
+from ..emkit.sim.simulate import Problem
+from . import area_marker
 
 # How far outside an edge the feed-axis check probes for copper (mm). Deep
 # enough to clear the small keep-off a ground pour usually leaves against the
@@ -375,9 +376,7 @@ def _probe_hits_rect(probe, rect):
     near, poly, covers = data
     if covers is not None:
         return covers
-    if any(
-        _aabb_overlap(bb, rect) and _seg_hits_rect(a, b, rect) for bb, a, b in near
-    ):
+    if any(_aabb_overlap(bb, rect) and _seg_hits_rect(a, b, rect) for bb, a, b in near):
         return True
     # No edge of the polygon crosses this rect (the ones not kept can't reach
     # it -- the rect is inside the span they were rejected against), so the
@@ -432,7 +431,7 @@ class CheckContext:
 
     def copper_layers(self):
         """The board's enabled copper layers as (suffix, layer_id) pairs."""
-        from ..sim import simulate
+        from ..emkit.sim import simulate
 
         return simulate.copper_layers(self.board)
 
@@ -495,11 +494,11 @@ def _one_marker(board):
     """The single placed area marker decoded (area_marker.decode_marker), or
     None when there is not exactly one, or it no longer decodes -- both are
     surfaced by the area section itself, so the checks stay quiet."""
-    fps = area_marker.marker_footprints(board)
-    if len(fps) != 1:
+    markers = area_marker.placed_markers(board)
+    if len(markers) != 1:
         return None
     try:
-        return area_marker.decode_marker(fps[0])
+        return area_marker.decode_marker(markers[0])
     except ValueError:
         return None
 
@@ -508,7 +507,7 @@ def _resolve_layer(board, name):
     """The copper layer for suffix ``name`` (defaulting to the top copper
     when blank) as a ``(suffix, layer_id)`` pair, or None when it isn't an
     enabled copper layer on this board."""
-    from ..sim import simulate
+    from ..emkit.sim import simulate
 
     want = name or "F_Cu"
     for suffix, layer_id in simulate.copper_layers(board):
@@ -671,9 +670,11 @@ def _copper_shapes(board, layer_id, clip):
                 yield shape
 
     for fp in board.GetFootprints():
-        # The plugin's own markers are skipped whole: the area marker carries
-        # the wizard's antenna *preview* as filled polys on the feed layer, and
-        # a sketch of the candidate being judged is not copper it collides with.
+        # The plugin's own drawings are skipped whole: the preview footprint is
+        # filled polys on the feed layer, and a sketch of the candidate being
+        # judged is not copper it collides with. (The antenna footprint a
+        # placement writes is not one of these -- that one is real copper, and
+        # is meant to be seen by the next candidate's check.)
         if _is_marker(fp):
             continue
         for pad in fp.Pads():
@@ -687,12 +688,18 @@ def _copper_shapes(board, layer_id, clip):
 
 
 def _is_marker(fp):
-    """Whether ``fp`` is one of the plugin's own marker footprints (the area
-    marker or the feed marker), matched by LIB_ID item name the way the marker
-    finders do (feed_marker.footprints_named)."""
+    """Whether ``fp`` is one of the plugin's own drawings -- the feed marker,
+    the wizard's antenna preview, the area marker's feed arrow, or a whole area
+    marker from the versions when it was one footprint and the wizard has not
+    converted it yet (legacy/area_marker_v1.py) -- matched by LIB_ID item name
+    the way the marker finders do (feed_marker.footprints_named). The area
+    marker's rectangle is a board graphic and never reaches this walk; it is on
+    a User layer either way, and this walk only ever asks about copper."""
     return str(fp.GetFPID().GetLibItemName()) in (
         area_marker.MARKER_NAME,
+        area_marker.FEED_NAME,
         feed_marker.MARKER_NAME,
+        preview.PREVIEW_NAME,
     )
 
 

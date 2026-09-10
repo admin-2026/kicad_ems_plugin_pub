@@ -70,14 +70,56 @@ class Application:
     @property
     def bandwidth_mhz(self):
         """The operating bandwidth (MHz) -- the span between the band edges, or
-        ``None`` when the band is free (a Custom target with no bandwidth)."""
-        return None if not self.band else (self.band[1] - self.band[0]) * 1000.0
+        ``None`` when the band is free (a Custom target with no bandwidth).
+
+        Rounded (to a millihertz, far below anything a target is specified to):
+        a typed bandwidth becomes band edges and comes back through here, and
+        the binary noise of that round trip would otherwise end up in the file
+        a saved target is kept in -- and in the field the user reopens."""
+        if not self.band:
+            return None
+        return round((self.band[1] - self.band[0]) * 1000.0, 9)
 
     @property
     def vswr(self):
         """The VSWR the target return loss corresponds to (derived, so it can
         never disagree with ``return_loss_db``)."""
         return vswr_from_return_loss(self.return_loss_db)
+
+    @property
+    def spec_line(self):
+        """This target's spec in one line -- see :func:`spec_line`."""
+        return spec_line(self)
+
+
+def spec_line(app):
+    """Every part of ``app``'s spec that is actually pinned down, in one line::
+
+        2.45 GHz · band 2.4–2.4835 GHz · 50 Ω · return loss ≥10 dB
+
+    A field the target leaves free is left out rather than printed as a default
+    the user never chose (the dialog's rule for the whole design target).
+
+    Duck-typed on the four attributes, not on the class, so a caller holding
+    something Application-shaped (design.run_verdicts' target, the tests' stub)
+    gets the same line."""
+    parts = []
+    if app.f0_ghz:
+        parts.append(f"{app.f0_ghz:g} GHz")
+    if app.band:
+        parts.append(f"band {app.band[0]:g}–{app.band[1]:g} GHz")
+    if app.impedance_ohm:
+        parts.append(f"{app.impedance_ohm:g} Ω")
+    if app.return_loss_db:
+        parts.append(f"return loss ≥{app.return_loss_db:g} dB")
+    return " · ".join(parts)
+
+
+def describe(app):
+    """``app`` named and spelled out -- its name followed by :func:`spec_line`.
+    What the run report's verdict table is headed with, and what the dialog
+    shows under the picker for a target it doesn't offer the fields of."""
+    return " · ".join(p for p in (app.name, spec_line(app)) if p)
 
 
 class Applications:
@@ -167,19 +209,33 @@ class Applications:
         return None
 
     @classmethod
-    def custom(cls, *, f0_ghz, bandwidth_mhz, impedance_ohm, return_loss_db=None):
+    def custom(
+        cls,
+        *,
+        f0_ghz,
+        bandwidth_mhz,
+        impedance_ohm,
+        return_loss_db=None,
+        name=None,
+    ):
         """A synthesized ``Custom…`` target from hand-typed numbers, so a Custom
         pick is carried and scored exactly like a catalog application (no
         special-casing downstream). The band edges straddle the pattern
         frequency by half the bandwidth; any missing / non-positive input
         leaves that field free (``None``) -- shown, not judged, never
-        defaulted."""
+        defaulted.
+
+        ``name`` is the label the result carries: the ``Custom…`` sentinel
+        while the numbers are being typed, or the user's own name once the
+        target has been saved and picked back by it (``applications.catalog``) --
+        one synthesis either way, so a saved target and a live Custom one are
+        the same object built from the same fields."""
         band = None
         if f0_ghz and f0_ghz > 0 and bandwidth_mhz and bandwidth_mhz > 0:
             half = bandwidth_mhz / 1000.0 / 2.0  # MHz -> GHz, half-width
             band = (f0_ghz - half, f0_ghz + half)
         return Application(
-            cls.CUSTOM,
+            name or cls.CUSTOM,
             f0_ghz=f0_ghz,
             band=band,
             impedance_ohm=(

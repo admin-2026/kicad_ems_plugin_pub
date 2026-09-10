@@ -17,18 +17,14 @@ callers:
     python3 tests/test_runcontrol.py   (or pytest)
 """
 
-import importlib
 import os
 import pathlib
-import sys
 import tempfile
-import types
+
+from bare_package import load
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
-runcontrol = importlib.import_module("antenna_plugin.sim.runcontrol")
+runcontrol = load("emkit.sim.runcontrol")
 
 
 class FakeProc:
@@ -109,6 +105,35 @@ def test_an_unpostable_request_reports_false():
     # pretence that the solver will react.
     gone = os.path.join(tempfile.gettempdir(), "no-such-dir-4711", "run.ctl")
     assert runcontrol.request_sample(FakeProc(), gone) is False
+
+
+def test_the_solvers_signal_advice_is_restated_as_this_channel():
+    """The binary tells whoever is reading to press Ctrl-C and signal a pid.
+    Neither frontend's reader can: the window has no console and a `run start`
+    is detached from the shell that asked for it, so the pid named is one the
+    caller is not the parent of and killing it would lose the report."""
+    hint = (
+        "Ctrl-C stops the run early and still writes the report from the data "
+        "so far; `kill -USR1 46868` writes one mid-run."
+    )
+    said = runcontrol.restate_signal_hint(hint)
+    assert "Ctrl-C" not in said and "kill -USR1" not in said
+    assert "run sample" in said and "run stop" in said
+    # Indented the same way the solver prints it, and still caught.
+    assert runcontrol.restate_signal_hint(f"  {hint}") == said
+
+
+def test_everything_else_the_solver_prints_passes_through_untouched():
+    """One line, matched on its exact opening. A filter that guessed would
+    eat output the solver meant a reader to have -- including the control
+    file's own line, which says the true thing."""
+    for line in (
+        "step 2000 / 426305 (0.58 ns / 122.82 ns cap)",
+        "WARNING [GND-004]: port 1: the feed direction points toward +y",
+        'Control file /x/simulation/run.ctl: a line "sample" writes a report',
+        "Ctrl-C is not what this line is about",
+    ):
+        assert runcontrol.restate_signal_hint(line) == line
 
 
 if __name__ == "__main__":

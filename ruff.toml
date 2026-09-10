@@ -1,7 +1,7 @@
 # Lint and format config for the plugin -- one tool (ruff) doing both jobs,
 # driven by `make lint` / `make format` (see tools/lint.py for the runner).
 #
-# It lives at the repo root, not under antenna_plugin/, so an editor or IDE
+# It lives at the repo root, not under the plugin package, so an editor or IDE
 # opening any file in the checkout picks up the same rules the Makefile uses.
 # ruff is not a build or install dependency: install it where you lint
 # (`pip install ruff`).
@@ -10,12 +10,16 @@
 # clang-format via ems/make/lint.mk) and its Python scripts answer to it, not
 # to this config -- excluding it here keeps `ruff check .` at the root from
 # reaching across that line. The rest is generated or vendored code.
+# `dist`, `build` and the `*_pub` staging clones are copies of files that are
+# linted where they are written, and a checkout may hold several of each.
 extend-exclude = [
     "ems",
     "build",
+    "dist",
     "examples",
     "binaries",
-    "antenna_plugin/vendor",
+    "*_pub",
+    "vendor",
 ]
 
 # Black's default, and the width the formatter targets. The tree is currently
@@ -26,7 +30,7 @@ line-length = 88
 indent-width = 4
 
 # 3.9 is the floor across the KiCad versions the README supports (7.0+ bundle
-# 3.9 or newer), and antenna_plugin/ is written to it -- typing is
+# 3.9 or newer), and the plugin is written to it -- typing is
 # `Optional[x]`, never `x | None`. Saying so stops pyupgrade (UP045)
 # and bugbear (B905, `zip(strict=)`) from recommending 3.10-only syntax that
 # would import fine on this machine and fail inside pcbnew. tools/ runs under
@@ -40,10 +44,12 @@ target-version = "py39"
 select = ["E", "W", "F", "I", "B", "UP"]
 
 [lint.per-file-ignores]
-# The suite is assert-driven end to end (tests/bare_package.py runs plain
-# `assert` statements, no pytest), so `assert False` for an unreachable
-# branch is the same tool as every other line in it, not an oversight.
-"tests/*" = ["B011"]
+# The suite is assert-driven end to end (bare_package.run_module_tests runs
+# plain `assert` statements, no pytest), so `assert False` for an unreachable
+# branch is the same tool as every other line in it, not an oversight. The
+# tests sit beside the code they cover -- emkit/tests/, plugins/<name>/tests/
+# and this repository's own tests/ -- and assembly merges the first two.
+"**/tests/*" = ["B011"]
 
 [format]
 # Double quotes and spaces are already what the tree uses; naming them keeps
@@ -51,3 +57,12 @@ select = ["E", "W", "F", "I", "B", "UP"]
 quote-style = "double"
 indent-style = "space"
 docstring-code-format = false
+
+# Prose is not source. Recent ruff also formats the ```python blocks inside
+# Markdown, and the notes under dev_docs/ and execution_plan/ are written for
+# a reader, not a parser: their snippets are excerpts and sketches (`def
+# validate(self): ...` in a column, a lone `Param(...)` that is one item of a
+# list elsewhere), and the formatter rewraps them into something that no
+# longer reads as the point being made. Same reason docstring-code-format is
+# off above -- the code the formatter owns is the code that runs.
+exclude = ["*.md"]

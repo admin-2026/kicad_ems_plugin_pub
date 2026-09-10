@@ -8,18 +8,14 @@ pcbnew) so the module's package-relative home resolves:
     python3 tests/test_runinfo.py   (or pytest)
 """
 
-import importlib
 import json
 import pathlib
-import sys
 import tempfile
-import types
+
+from bare_package import load
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
-runinfo = importlib.import_module("antenna_plugin.sim.runinfo")
+runinfo = load("emkit.sim.runinfo")
 
 # A finished 20 ns run, exactly as RunSeries.cpp writes it.
 _DONE = {

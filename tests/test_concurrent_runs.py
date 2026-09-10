@@ -7,6 +7,10 @@ is already in flight; a declined one changes nothing at all; and every way a
 pass can end takes it back out of the live list, so a warning is never about a
 pass that finished long ago.
 
+The claims are files in the board's ``simulation/running/`` folder now
+(sim.runlock), not a list in this process, so every section here is pointed at
+one temporary directory standing in for one board.
+
 The base's own bookkeeping is driven through a stand-in section (it drives no
 solver); the two real ones are checked for what they call themselves and for
 asking before they touch anything. See wx_stub.py for what "stubbed" means.
@@ -17,14 +21,21 @@ asking before they touch anything. See wx_stub.py for what "stubbed" means.
 import importlib
 import pathlib
 import sys
+import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import wx_stub  # noqa: F401,E402  (installs wx)
 from bare_package import load, run_module_tests  # noqa: E402
 
 registry = load("design.registry")
-solver = load("gui.sections.solver")
+runlock = load("emkit.sim.runlock")
+solver = load("emkit.gui.sections.solver")
 run_section = load("gui.sections.run")
+
+# The one board every section in a test shares. Reset by _passes / _run_section,
+# which is what "a just-opened shell on a board nothing has run on" means now
+# that the live list is a directory rather than a class attribute.
+_BOARD = None
 
 # The wizard-scan harness (its stub page, host and area) is that test module's;
 # a real ScanSection is built through it rather than stubbing a page twice.
@@ -43,6 +54,9 @@ class _Pass(solver.SolverSection):
         self.answer = answer
         self.asked = []  # the ``others`` list each warning was given
 
+    def _sim_dir(self):
+        return _BOARD
+
     @property
     def busy_label(self):
         return self._label
@@ -53,10 +67,18 @@ class _Pass(solver.SolverSection):
 
 
 def _passes(*labels):
-    """Fresh sections against an empty live list -- the state a just-opened
-    shell is in (the list is class-level, so it outlives one test)."""
-    solver.SolverSection._live.clear()
+    """Fresh sections against a board nothing is running on -- the state a
+    just-opened shell is in."""
+    global _BOARD
+    _BOARD = tempfile.mkdtemp(prefix="concurrent_")
     return [_Pass(label) for label in labels]
+
+
+def _on_the_board(section):
+    """Point a real section at the same board the stand-ins are claiming, so
+    it can see them (it has no open board of its own here)."""
+    section._sim_dir = lambda: _BOARD
+    return section
 
 
 class _RunPage:
@@ -77,8 +99,7 @@ class _RunPage:
 
 
 def _run_section():
-    solver.SolverSection._live.clear()
-    return run_section.RunSection(_RunPage(), wx_stub.wx.BoxSizer())
+    return _on_the_board(run_section.RunSection(_RunPage(), wx_stub.wx.BoxSizer()))
 
 
 # --------------------------------------------------------------------------- #
@@ -123,7 +144,7 @@ def test_declining_leaves_the_second_pass_unstarted():
     # Refusing to start is not a state change: only the first pass is live,
     # and the second one never called itself running.
     assert scan.running is False
-    assert solver.SolverSection._live == [run]
+    assert runlock.labels(_BOARD) == ["the simulation run"]
 
 
 def test_starting_anyway_runs_both():
@@ -131,7 +152,9 @@ def test_starting_anyway_runs_both():
     run._claim()
     scan._claim()
     assert run.running and scan.running
-    assert solver.SolverSection._live == [run, scan]
+    assert sorted(runlock.labels(_BOARD)) == sorted(
+        ["the simulation run", "the L-shaped monopole scan"]
+    )
 
 
 def test_a_finished_pass_stops_being_counted():
@@ -150,7 +173,7 @@ def test_a_window_closed_mid_run_releases_its_pass():
     run, scan = _passes("the simulation run", "the L-shaped monopole scan")
     run._claim()
     run.shutdown()
-    assert solver.SolverSection._live == []
+    assert runlock.labels(_BOARD) == []
     assert scan.confirm_concurrent() is True
     assert scan.asked == []
 
@@ -160,7 +183,7 @@ def test_releasing_a_pass_that_never_started_is_harmless():
     # having claimed (a failure before launch).
     (run,) = _passes("the simulation run")
     run._release()
-    assert solver.SolverSection._live == []
+    assert runlock.labels(_BOARD) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -178,6 +201,7 @@ def test_the_live_passes_are_named_in_one_sentence():
 def test_each_pass_names_itself_by_what_it_runs():
     # The label is what the warning shows, so it has to say which view to go
     # to if the user would rather stop that pass instead.
+    _passes()  # a board of its own; nothing is claimed on it
     section = _run_section()
     section._grid_only = False
     assert section.busy_label == "the simulation run"
@@ -211,7 +235,7 @@ def test_the_scan_asks_before_it_touches_the_board():
     # preview off the marker -- so the question comes before _prepare.
     (other,) = _passes("the simulation run")
     other._claim()
-    scan = scan_harness._section(registry.DESIGNS[0])
+    scan = _on_the_board(scan_harness._section(registry.DESIGNS[0]))
     _decline(scan)
     scan.on_scan()
     assert scan.asked == [["the simulation run"]]
@@ -225,7 +249,7 @@ def test_an_accepted_scan_carries_on_into_the_pass():
     # which stops at the board, since this harness has none open.
     (other,) = _passes("the simulation run")
     other._claim()
-    scan = scan_harness._section(registry.DESIGNS[0])
+    scan = _on_the_board(scan_harness._section(registry.DESIGNS[0]))
     scan._confirm_concurrent = lambda others: True
     scan.on_scan()
     assert scan._status_label.GetLabel() == "No board is open."

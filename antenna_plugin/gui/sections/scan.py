@@ -11,15 +11,17 @@ and slider — a range means nothing to a parameter nobody sweeps — but their
 value box stays typeable: that number is the fixed value every candidate
 shares, so a fixed parameter is set by typing it rather than by selecting the
 row to free its slider. Moving the active slider draws the candidate at that
-value straight into the placed area marker, on the copper layer the main
-dialog's Feed layer pick names (also the layer the scan splices candidates
-into), so the swept shape is visible on the board before anything is
-simulated. The preview is real copper on the marker, so the scan strips it
-before plotting gerbers (and redraws it after), and placing the final
+value straight onto the board, on the copper layer the main dialog's Feed
+layer pick names (also the layer the scan splices candidates into), so the
+swept shape is visible on the board before anything is simulated. It is drawn
+as its own footprint beside the area marker (markers/preview.py) rather than
+inside it, so the sketch and the area it was solved in are two items the user
+selects and deletes separately. The preview is real copper, so the scan strips
+it before plotting gerbers (and redraws it after), and placing the final
 footprint clears it.
 
 A row's label *is* the picture of its own knob (``Param.icon``, drawn by
-tools/icons/scan.py): the design's antenna with the ends of *that* parameter's
+tools/icons/designs/): the design's antenna with the ends of *that* parameter's
 range ghosted around it and the swept quantity dimensioned. Words can name a
 parameter, but only the drawing can point at the copper it moves — so the
 drawing is the whole of the row's answer to "which one is this?", and the name
@@ -57,7 +59,7 @@ new design needs no edit in this file.
 
 The rows outlive the window: bounds hand-tuned to one board's area are worth
 keeping, so ``snapshot`` / ``restore`` put them in the project's settings file
-under keys namespaced by design (gui.settings, the same per-section contract
+under keys namespaced by design (emkit.settings, the same per-section contract
 the simulate view's sections use). They do not outlive the *area*, though —
 placing a new area marker calls ``reset_params`` and the rows go back to the
 design's seeds.
@@ -107,21 +109,23 @@ import pcbnew
 import wx
 
 from ...design import fit, sizing
-from ...markers import area_marker
-from .. import icons
-from ..theme import PAD, ROW
-from ..widgets import (
+from ...emkit.gui import icons
+from ...emkit.gui.sections.passknobs import PassKnobs
+from ...emkit.gui.sections.solver import SolverSection
+from ...emkit.gui.theme import PAD, ROW
+from ...emkit.gui.widgets import (
     SPIN_W,
     Slider,
     SpinCtrl,
     emphasize,
+    enable,
     live_text,
     muted,
     set_tip,
     to_float,
 )
-from .passknobs import PassKnobs
-from .solver import SolverSection
+from ...emkit.markers import preview
+from ...markers import area_marker
 
 # Candidates a sweep may produce: the SpinCtrl's range, its initial value (what
 # reset_params puts back) and the clamp a restored count goes through -- the
@@ -377,8 +381,8 @@ class ScanSection(SolverSection):
         for p in self.design.params:
             active = p.key == param
             for ctrl in (self._lo[p.key], self._sl[p.key], self._hi[p.key]):
-                ctrl.Enable(active)
-            self._val[p.key].Enable(not active)
+                enable(ctrl, active)
+            enable(self._val[p.key], not active)
         held = to_float(self._val[param].GetValue(), None)
         if held is not None:
             self._set_value(param, held)  # into the row's range
@@ -509,7 +513,7 @@ class ScanSection(SolverSection):
             self._set_value(key, self._restored.pop(key, value))
         self._sync_swept_value()  # ChangeValue fires no EVT_TEXT
 
-    # --- persisted rows (gui.settings) ----------------------------------------
+    # --- persisted rows (emkit.settings) -----------------------------------
     # The sweep is worth keeping across launches: the bounds and fixed values
     # are hand-tuned to one board's area. Keys are namespaced by design -- every
     # designer page has its own rows and they all share one settings file.
@@ -586,7 +590,7 @@ class ScanSection(SolverSection):
     def _feed_layer_id(self, board):
         """The pcbnew layer id of the Feed layer pick, validated against the
         board's enabled copper layers."""
-        from ...sim import simulate
+        from ...emkit.sim import simulate
 
         name = self._feed_layer_name()
         for suffix, layer_id in simulate.copper_layers(board):
@@ -708,13 +712,13 @@ class ScanSection(SolverSection):
         return dict(state.values), ctx, state.geo
 
     def _draw_preview(self):
-        """Draw the candidate at the current sliders (_candidate) into the
-        placed area marker, stroked at the track width: on the picked copper
-        layer while it fits the area, and on the marker's own User layer while
-        it doesn't — the antenna spilling out of the rectangle, in the marker's
-        colour, rather than nothing at all. Returns ``(status text, fits)``;
-        raises with guidance when the marker is missing or the values yield no
-        geometry to draw at any size."""
+        """Draw the candidate at the current sliders (_candidate) onto the
+        board as the preview footprint (markers/preview.py), stroked at the
+        track width: on the picked copper layer while it fits the area, and on
+        the marker's own User layer while it doesn't — the antenna spilling out
+        of the rectangle, in the marker's colour, rather than nothing at all.
+        Returns ``(status text, fits)``; raises with guidance when the marker
+        is missing or the values yield no geometry to draw at any size."""
         board = pcbnew.GetBoard()
         if board is None:
             raise RuntimeError("no board is open")
@@ -732,9 +736,7 @@ class ScanSection(SolverSection):
             layer, layer_id = area_marker.marker_layer(marker)
         rot = spec.get("rot_deg") or 0.0
         pivot = spec.get("pivot") or (0, 0)
-        area_marker.draw_antenna(
-            marker, geo.centerline_segments(rot, pivot), layer_id, trace_w
-        )
+        preview.draw(board, geo.centerline_segments(rot, pivot), layer_id, trace_w)
         pcbnew.Refresh()
         self._preview_on = True
         shape = (
@@ -760,8 +762,8 @@ class ScanSection(SolverSection):
         that merely doesn't fit does not come here: it is drawn on the marker
         layer (_draw_preview)."""
         try:
-            fps = self.page.area._markers()
-            if fps and area_marker.clear_antenna(fps[0]):
+            board = pcbnew.GetBoard()
+            if board is not None and preview.clear(board):
                 pcbnew.Refresh()
         except Exception:
             pass
@@ -770,19 +772,27 @@ class ScanSection(SolverSection):
     def refresh_preview(self):
         """Redraw the preview after its inputs changed (the area marker
         reshaped or moved, a range edited, the swept parameter switched).
-        Redraws whenever one is wanted — either because the marker carries one
-        (this wizard was reopened on a board that already has it) or because
-        this session drew one and an undrawable candidate wiped it; a marker
-        that never had a preview is left alone. This is also what moves a
-        preview between the copper and the marker layer as the candidate starts
-        or stops fitting the area (_draw_preview picks the layer every time).
+        Redraws whenever one is wanted — either because the board already
+        carries a preview footprint (this wizard was reopened on a board that
+        was previewed on before) or because this session drew one and an
+        undrawable candidate wiped it; a board that never had a preview is left
+        alone. This is also what moves a preview between the copper and the
+        marker layer as the candidate starts or stops fitting the area
+        (_draw_preview picks the layer every time).
 
         Returns whether it redrew — which is also whether it re-ran the
         advisory checks, so a caller that changed the *sweep* rather than the
         drawn candidate knows whether the banner still needs telling."""
-        fps = self.page.area._markers()
-        if not fps or not (self._preview_on or area_marker.antenna_items(fps[0])):
+        if not self.page.area._markers():
             return False
+        if not self._preview_on:
+            # Nobody asked for one this session: only a preview footprint
+            # already on the board says a redraw is wanted. (A preview that is
+            # wanted is redrawn without asking the board at all -- there may be
+            # nothing drawn to find, which is the whole point of _preview_on.)
+            board = pcbnew.GetBoard()
+            if board is None or not preview.exists(board):
+                return False
         self.on_preview()
         return True
 
@@ -862,7 +872,7 @@ class ScanSection(SolverSection):
         if board is None:
             return False
         from ...design import scan_store
-        from ...sim import simulate
+        from ...emkit.sim import simulate
 
         folder = simulate.scan_dir(board, self.design.key)
         try:
@@ -932,7 +942,7 @@ class ScanSection(SolverSection):
         from ...design import wizard_scan
 
         self._spliced = (spec, wizard_scan.spliced_rects(spec, planned))
-        self._claim()  # _running, and the shell now counts this pass
+        self._claim()  # _running, and the board's folder now names this pass
         self._cancelled = False
         self._grid_only = grid_only
         # A grid pass measures nothing, so it leaves the last scan's results
@@ -965,11 +975,13 @@ class ScanSection(SolverSection):
     def _prepare(self, board, grid_only):
         """Everything a pass needs off the board and the form, gathered on the
         main thread: ``(spec, planned candidates, candidate count for the
-        gauge, scan folder, (exe, gerbers, stack, base_params) for the
-        worker)``. Raises with one readable message when any of it can't be had
-        (an infeasible sweep, a missing binary, an unsaved board)."""
+        gauge, scan folder, (kicad_version, gerbers, stack, base_params) for
+        the worker)``. Raises with one readable message when any of it can't be
+        had (an infeasible sweep, an unsaved board). Which solver runs the
+        candidates is the worker's first question, not this one's."""
         from ...design import wizard_scan
-        from ...sim import simulate
+        from ...emkit.kicad.version import get_kicad_version
+        from ...emkit.sim import simulate
 
         spec = self._spec()
         planned = wizard_scan.plan(spec)  # raises on an infeasible sweep
@@ -984,7 +996,11 @@ class ScanSection(SolverSection):
             and spec.get("sweep_lo") is None
         ):
             total += 1
-        exe, _root = simulate.locate()
+        # Not the launcher itself: deciding native-or-container asks the
+        # container engine two questions, which on a Docker Desktop that is
+        # still waking up freezes the window for seconds. The worker does that
+        # (_worker); what is read here is the pcbnew fact it needs.
+        kicad_version = get_kicad_version()
         self._ensure_board_saved(board)
         stack = simulate.collect_stackup(board)
         work = simulate.scan_dir(board, self.design.key)
@@ -992,8 +1008,7 @@ class ScanSection(SolverSection):
         # would be plotted under every spliced candidate: strip it for the
         # plot, then put it back (one that doesn't fit sits on the marker
         # layer and plots nothing, but it costs nothing to treat both alike).
-        fps = self.page.area._markers()
-        stripped = bool(fps) and area_marker.clear_antenna(fps[0]) > 0
+        stripped = preview.clear(board) > 0
         try:
             gerbers = simulate.plot_gerbers(board, work / "gerbers")
         finally:
@@ -1003,7 +1018,7 @@ class ScanSection(SolverSection):
                 except Exception:
                     pcbnew.Refresh()  # show the marker without it
         base_params = self.page.host.run_params(str(work))
-        return spec, planned, total, work, (exe, gerbers, stack, base_params)
+        return spec, planned, total, work, (kicad_version, gerbers, stack, base_params)
 
     def _sync_scan_buttons(self):
         """Put the section's two buttons in step with the run state -- the
@@ -1025,7 +1040,7 @@ class ScanSection(SolverSection):
             tip = "Simulate every candidate of the sweep and score it"
         self.scan_btn.SetLabel(label)
         set_tip(self.scan_btn, tip)
-        self.grids_btn.Enable(not self._running)
+        enable(self.grids_btn, not self._running)
         set_tip(
             self.grids_btn,
             self._start_tip(
@@ -1117,12 +1132,20 @@ class ScanSection(SolverSection):
             "return_loss_db": app.return_loss_db,
         }
 
-    def _worker(self, exe, gerbers, stack, base_params, spec, work, grid_only):
+    def _worker(
+        self, kicad_version, gerbers, stack, base_params, spec, work, grid_only
+    ):
         from ...design import wizard_scan
+        from ...emkit.sim import launch
 
         try:
+            # First, off the wx thread: how a solve starts on this machine
+            # (a container probe is two engine calls, and a sleeping Docker
+            # Desktop is slow to answer both).
+            self.log("Starting the solver…")
+            launcher = launch.prepare(kicad_version=kicad_version)
             results = wizard_scan.run_scan(
-                exe,
+                launcher,
                 gerbers,
                 stack,
                 base_params,
@@ -1161,7 +1184,7 @@ class ScanSection(SolverSection):
     def _scan_done(self, results, error):
         if not self.page:
             return
-        self._release()  # _running, and the pass leaves the shell's live list
+        self._release()  # _running, and the pass drops its claim
         self._end_session()
         self._sync_scan_buttons()
         # Snap the gauge full (a skipped refine leaves it one short) and put

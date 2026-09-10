@@ -25,7 +25,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import wx_stub  # noqa: F401,E402  (installs wx)
 from bare_package import load, run_module_tests  # noqa: E402
 
-widgets = load("gui.widgets")
+widgets = load("emkit.gui.widgets")
 
 RANGE = (20, 2000)  # the area sliders' range: 2 .. 200 mm, in tenths
 SCALE = 10

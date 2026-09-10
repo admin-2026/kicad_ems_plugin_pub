@@ -28,6 +28,7 @@ Pure stdlib -- no wx, no pcbnew -- so it stays unit-testable off KiCad.
 import json
 from pathlib import Path
 
+from ..applications import db as applications
 from . import measure, scoring
 
 # The sidecar's name, beside the dump it judges. Fixed by convention on both
@@ -37,18 +38,14 @@ FILENAME = "run_verdicts.js"
 
 
 def describe(app):
-    """The design target in one line, for the page to show over the table:
-    the application's name and every part of the spec it actually pins down.
-    A field the target leaves free is left out rather than printed as a
-    default the user never chose."""
-    parts = [app.name, f"{app.f0_ghz:g} GHz"]
-    if app.band:
-        parts.append(f"band {app.band[0]:g}–{app.band[1]:g} GHz")
-    if app.impedance_ohm:
-        parts.append(f"{app.impedance_ohm:g} Ω")
-    if app.return_loss_db:
-        parts.append(f"return loss ≥{app.return_loss_db:g} dB")
-    return " · ".join(parts)
+    """The design target in one line, for the page to show over the table: the
+    application's name and every part of the spec it actually pins down.
+
+    The wording belongs to the target, not to this report -- the dialog's
+    Design-target section shows the same line under its picker -- so it is
+    ``applications.db``'s (duck-typed there too, on the same attributes
+    ``scoring.target_from_application`` reads)."""
+    return applications.describe(app)
 
 
 def evaluate(dump_text, app):
@@ -58,16 +55,67 @@ def evaluate(dump_text, app):
 
     None when there is nothing to judge -- no target frequency, or a dump with
     no impedance sweep in it (a run that stopped before its first one). An
-    empty verdict table would read like a verdict."""
+    empty verdict table would read like a verdict.
+
+    Raises ``RuntimeError``, rather than answering None, when the run was
+    solved against a different impedance than the target is specified at
+    (:func:`_same_reference`): that is not "nothing to judge", it is numbers
+    that would be judged wrongly, and the difference is worth a sentence."""
     if not app or not app.f0_ghz:
         return None
+    _same_reference(dump_text, app)
     try:
-        result = measure.score(dump_text, app.f0_ghz)
+        result = measure.score(
+            dump_text, app.f0_ghz, measure.match_db(app.return_loss_db)
+        )
     except RuntimeError:
         return None
     payload = {"target": describe(app)}
     payload.update(scoring.serialize(result, scoring.target_from_application(app)))
     return payload
+
+
+def _same_reference(dump_text, app):
+    """Refuse to score a run whose ``S11`` was normalized to one impedance
+    against a target specified at another.
+
+    The solver writes ``S11`` and ``VSWR`` already normalized to the port
+    resistance it was handed, and records it as the dump's ``geometry.zref``;
+    ``scoring`` reads those columns back for the return loss, the VSWR and the
+    -10 dB bandwidth, then prints the *target's* impedance over them. Equal,
+    that is one number said twice -- which is what ``runjob.form_params``
+    now makes it. Unequal, three of the five rows are measured against a
+    reference the header does not name, and there is nothing in the table to
+    show it.
+
+    That cannot happen for a run this plugin starts any more, so this is for
+    the ones it does not: a dump from before that was true, a hand-edited
+    ``pcb.yaml``, a ``results show --job`` reaching back into an archive.
+
+    A free-impedance target judges nothing about the match, and a ``zref`` of
+    null is an ideal current source with no reference to disagree with. Neither
+    is a mismatch; both carry on.
+    """
+    if not app.impedance_ohm:
+        return
+    try:
+        zref = (json.loads(measure.payload(dump_text)).get("geometry") or {}).get(
+            "zref"
+        )
+    except ValueError:
+        return  # an unreadable dump is measure.score's to refuse, in its words
+    if zref is None:
+        return
+    # Compared loosely: both sides made the trip through a config file and a
+    # JSON dump as decimal text, and 50 must not fail to equal 50.
+    if abs(float(zref) - app.impedance_ohm) > 1e-6 * max(1.0, app.impedance_ohm):
+        raise RuntimeError(
+            f"this run was solved against {float(zref):g} Ω but {app.name} is "
+            f"specified at {app.impedance_ohm:g} Ω; its S11, VSWR and "
+            f"bandwidth are all measured against the port it was driven "
+            f"through, so they cannot be scored against a different one. "
+            f"Re-run the board with the two agreeing."
+        )
 
 
 def write(dump_path, app):

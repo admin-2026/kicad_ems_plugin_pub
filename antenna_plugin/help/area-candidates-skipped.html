@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- Advisory guide for the "area-candidates-skipped" warning
      (design.wizard_scan.plan_problems). Styled by
-     antenna_plugin/assets/palette.css + help_theme.css, linked relative to
+     emkit/assets/palette.css + help_theme.css, linked relative to
      this file: the help viewer loads the guide from the install tree, where
      those sheets are siblings, so nothing is templated or copied at display
      time. Keep it plain HTML -- no module scripts, no CDN, no network. A
@@ -11,8 +11,8 @@
 <head>
 <meta charset="utf-8">
 <title>Antenna Designer help — Candidates don't fit the area</title>
-<link rel="stylesheet" href="../assets/palette.css">
-<link rel="stylesheet" href="../assets/help_theme.css">
+<link rel="stylesheet" href="../emkit/assets/palette.css">
+<link rel="stylesheet" href="../emkit/assets/help_theme.css">
 </head>
 <body>
 <main class="doc">
@@ -57,9 +57,9 @@ resonance you are hunting may be entirely outside what is left.</p>
 
 <h2>How to fix it</h2>
 <ol>
-  <li>Grow the area marker — the sliders in the wizard's Area section, or
-      KiCad's own tools on the marker footprint. Deeper gives the stem more
-      room; longer along the feed edge gives the arm more room.</li>
+  <li>Grow the area marker on the board: double-click it to enter its group
+      and drag a corner of the rectangle. Deeper gives the stem more room;
+      longer along the feed edge gives the arm more room.</li>
   <li>Or narrow the sweep to values that fit: lower the swept row's max, or
       lower the fixed values (a narrower track leaves more length for the
       antenna, and so does a longer stem — up to the depth of the area, past

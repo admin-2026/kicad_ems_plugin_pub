@@ -18,7 +18,8 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from bare_package import load  # noqa: E402
 
-config = load("sim.config")
+config = load("config")
+core_config = load("emkit.config")
 
 
 def _stack():
@@ -51,7 +52,7 @@ def test_per_layer_metal_and_substrate_win():
         "metal_layers": [{"sigma": 3.77e7}, {"sigma": 6.3e7}],
         "substrate_layers": [{"eps": 2.2, "loss_tangent": 0.001}],
     }
-    out = config._apply_overrides(_stack(), p)
+    out = core_config._apply_overrides(_stack(), p)
     assert out[0]["sigma"] == 3.77e7  # F_Cu -> aluminium
     assert out[2]["sigma"] == 6.3e7  # B_Cu -> silver
     assert out[1]["eps"] == 2.2 and out[1]["loss_tangent"] == 0.001
@@ -64,7 +65,7 @@ def test_board_default_substrate_uses_board_loss():
         "metal_layers": [{"sigma": 5.8e7}, {"sigma": 5.8e7}],
         "substrate_layers": [None],
     }
-    out = config._apply_overrides(_stack(), p)
+    out = core_config._apply_overrides(_stack(), p)
     assert out[1]["eps"] == 4.4 and out[1]["loss_tangent"] == 0.02
 
 
@@ -78,7 +79,7 @@ def test_board_default_substrate_without_board_loss_blocks():
         "substrate_layers": [None],
     }
     try:
-        config._apply_overrides(stack, p)
+        core_config._apply_overrides(stack, p)
         assert False, "expected RuntimeError"
     except RuntimeError as exc:
         assert "D1" in str(exc) and "loss tangent" in str(exc)
@@ -88,7 +89,7 @@ def test_missing_materials_block():
     # No metal_layers/substrate_layers (material UI absent): the first copper
     # foil has no conductivity source, so the run blocks rather than defaulting.
     try:
-        config._apply_overrides(_stack(), {})
+        core_config._apply_overrides(_stack(), {})
         assert False, "expected RuntimeError"
     except RuntimeError as exc:
         assert "F_Cu" in str(exc) and "metal" in str(exc)
@@ -99,7 +100,7 @@ def test_short_metal_list_blocks_uncovered_layer():
     # has no source and blocks -- never a silent fallback.
     p = {"metal_layers": [{"sigma": 3.77e7}], "substrate_layers": [None]}
     try:
-        config._apply_overrides(_stack(), p)
+        core_config._apply_overrides(_stack(), p)
         assert False, "expected RuntimeError"
     except RuntimeError as exc:
         assert "B_Cu" in str(exc)
@@ -136,7 +137,7 @@ _FEED = {"x": 30.0, "y": -38.0, "dir_x": 0.0, "dir_y": 1.0}
 def test_yaml_feed_port_is_point_plus_direction():
     text = _write({"feed": dict(_FEED)})
     assert text.startswith(f"config_version: {config.CONFIG_VERSION}\n")
-    assert config.CONFIG_VERSION.split(".")[0] == "17"
+    assert config.CONFIG_VERSION.split(".")[0] == "20"
     body = text[text.index("feed_ports:") :]
     # A port is a point plus a direction and nothing else -- no clearance rect.
     assert "  - x_mm: 30.0" in body
@@ -160,7 +161,7 @@ def test_yaml_paste_entries_carry_their_gerber():
     # The ground check identifies pads from the solder paste, so each paste
     # layer rides on its own stackup entry with its gerber, matched to the side
     # by its F./B. name. KiCad plots paste positive (the drawn apertures ARE
-    # the pads), so no is_negative; the solder mask is emitted nowhere at all.
+    # the pads), so no is_negative.
     text = _write(
         {"feed": dict(_FEED)},
         stack=_paste_stack(),
@@ -179,7 +180,9 @@ def test_yaml_paste_entries_carry_their_gerber():
     assert all("show_in_grid: false" in e for e in paste)
     assert all("thickness_mm" not in e and "eps" not in e for e in paste)
     assert "is_negative" not in text
-    assert "mask" not in text
+    # And no coating: this run did not ask for the mask (include_mask), so the
+    # board it solves ends at the copper.
+    assert "- type: mask" not in text
 
 
 def test_yaml_overlay_without_a_gerber_is_omitted():

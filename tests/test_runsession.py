@@ -14,21 +14,18 @@ Two layers again:
     python3 tests/test_runsession.py   (or pytest)
 """
 
-import importlib
 import os
 import pathlib
 import sys
 import tempfile
 import threading
 import time
-import types
+
+from bare_package import load
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
-runsession = importlib.import_module("antenna_plugin.sim.runsession")
-runcontrol = importlib.import_module("antenna_plugin.sim.runcontrol")
+runsession = load("emkit.sim.runsession")
+runcontrol = load("emkit.sim.runcontrol")
 
 # What a solver prints around one set of outputs (the shapes the session
 # watches for), plus the noise it prints in between.

@@ -35,7 +35,7 @@ scoring = load("design.scoring")
 wizard_scan = load("design.wizard_scan")
 scan_section = load("gui.sections.scan")
 footprint_section = load("gui.sections.footprint")
-simulate = load("sim.simulate")
+simulate = load("emkit.sim.simulate")
 
 wx = wx_stub.wx
 F0 = 2.45

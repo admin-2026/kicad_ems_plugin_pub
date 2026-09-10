@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform lint/format runner for the Antenna Designer plugin.
+"""Cross-platform lint/format runner for the plugin.
 
 Wraps ruff (configured by ruff.toml at the repo root) so the Makefile rules
 are one-liners that behave the same whether make runs under sh (Linux/macOS/
@@ -29,10 +29,12 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# What "the plugin" means to the linter: the installed package plus the code
-# that builds and tests it. ruff.toml's extend-exclude keeps the simulator
-# tree and vendored code out even when a wider path is passed explicitly.
-DEFAULT_PATHS = ["antenna_plugin", "tools", "tests"]
+# The whole checkout, whichever checkout this is: the development tree has the
+# core and every plugin in it, an assembled one has a single package, and
+# naming them would be a list to keep up to date for no gain. ruff.toml's
+# extend-exclude is what keeps the simulator tree, the build output and
+# vendored code out -- of this and of an explicit path alike.
+DEFAULT_PATHS = ["."]
 
 # One ruff invocation per action. --fix and the format rewrites are the only
 # ones that touch files; keep it that way so `lint` and `format-check` are

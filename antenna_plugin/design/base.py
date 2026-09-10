@@ -1,12 +1,12 @@
 """The contract every antenna design implements, and what it buys.
 
 A *design* is one antenna topology the wizard can lay out, scan and place: the
-L-shaped monopole (lmonopole.py), the meandered inverted-F (ifa.py), and
-whatever comes next. Everything around it is written against this contract and
-nothing else -- the scan driver (wizard_scan.py), the scan's view manifests
-(scan_views.py), the wizard page and its Scan / Footprint sections -- so adding
-a topology is writing one module and listing it in registry.py, with no edit to
-the driver, the GUI or the views.
+L-shaped monopole (lmonopole.py), the meandered inverted-F (ifa.py), the
+meandered monopole (meander.py), and whatever comes next. Everything around it
+is written against this contract and nothing else -- the scan driver
+(wizard_scan.py), the scan's view manifests (scan_views.py), the wizard page and
+its Scan / Footprint sections -- so adding a topology is writing one module and
+listing it in registry.py, with no edit to the driver, the GUI or the views.
 
 A design supplies three things:
 
@@ -35,6 +35,7 @@ Pure: a design module may not import wx or pcbnew, so every topology stays
 unit-testable off KiCad (tests/test_designs.py checks the contract itself).
 """
 
+import inspect
 from typing import NamedTuple
 
 from . import geometry, sizing
@@ -64,25 +65,33 @@ class Seed(NamedTuple):
 class Param(NamedTuple):
     """One geometry knob of a design: its ``key`` (how the scan spec, the
     result rows and the sweep refer to it), the ``label`` the wizard shows,
-    the :class:`Seed` its row starts at, and ``icon``, the picture of it.
+    the :class:`Seed` its row starts at, ``icon``, the picture of it, and
+    ``reading``, the same thing in a sentence.
 
     ``icon`` names a PNG bundled under ``assets/icons/`` (drawn by
-    tools/icons/scan.py) showing which piece of *this* antenna the sweep
+    tools/icons/designs/) showing which piece of *this* antenna the sweep
     moves: the words on a row can say "stem length", only the drawing can say
-    which line that is -- and it says it without a sentence of prose, which is
-    why a knob carries no written explanation of its sweep at all. The Scan
-    section puts it beside the row.
+    which line that is. The Scan section puts it beside the row, and it is the
+    *whole* of what the wizard says about a knob -- no hint, no paragraph
+    under it.
 
-    A shipped design illustrates every knob (tests/test_designs.py holds it
-    to that, artwork included). The field still has an empty default, and an
-    empty one costs the row nothing but its picture, so a topology under
-    development is not blocked on somebody drawing for it.
+    ``reading`` is for the reader who cannot see the drawing: it is what
+    ``AntennaDesign.guide`` prints for the command line, and the wizard must
+    never show it (tests/test_designs.py holds ``gui/`` to that). A picture
+    beats a sentence at a dialog and is worth nothing down a pipe, so the two
+    are not alternatives -- they are the same fact for two different readers.
+
+    A shipped design illustrates and describes every knob (tests/test_designs.py
+    holds it to both). Both fields still default to empty, which costs a row
+    nothing but its picture, so a topology under development is not blocked on
+    somebody drawing for it.
     """
 
     key: str
     label: str
     seed: Seed
     icon: str = ""
+    reading: str = ""
 
 
 class Column(NamedTuple):
@@ -180,6 +189,66 @@ class AntennaDesign:
         geometry fits with room to scan. Sized off the quarter wave, so it
         follows the target frequency."""
         raise NotImplementedError
+
+    def guide(self, f0_ghz):
+        """This topology explained to a reader with no screen: what it is, how
+        it is wired, every knob and where that knob starts at ``f0_ghz``.
+
+        Provided here and not overridden -- a design that needs different
+        words has a different docstring, not a different method. Everything
+        below is already declared; the only thing this adds is a reading
+        order.
+
+        The explanation comes from the design *module's* docstring, drawing
+        included: that is where each topology is actually written down (the
+        classes carry no docstring of their own), and taking the class's would
+        silently print this one for every design, since ``getdoc`` inherits.
+        It is the one docstring in this package that is load-bearing rather
+        than merely helpful.
+
+        ``f0_ghz`` is an argument because every relative seed is a multiple of
+        the quarter wave: the millimetres are meaningless without a frequency,
+        and inventing one here would be this repository's one forbidden move.
+        The caller says which frequency it is working, and says so on the page.
+        """
+        q = sizing.quarter_wave_mm(f0_ghz)
+        out = [
+            f"{self.name} — design key `{self.key}`",
+            "",
+            self.summary,
+            "",
+            f"Wiring: {self.wiring}",
+            f"Its generated footprints are named {self.footprint_prefix}_…",
+            "",
+            inspect.getdoc(inspect.getmodule(type(self))) or "",
+            "",
+            f"Knobs, as lo … start … hi in mm at {f0_ghz:g} GHz "
+            "(a relative seed scales with 1/frequency):",
+        ]
+        for p in self.params:
+            lo, hi, value = p.seed.at(q)
+            out.append(
+                f"  {p.key} — {p.label}: {mm(lo)} … {mm(value)} … {mm(hi)} mm"
+                f"{self._role(p)}"
+            )
+            out.append(f"      {p.reading}")
+        if self.columns:
+            out.append("")
+            out.append(
+                "Derived geometry reported per candidate: "
+                + ", ".join(f"{c.key} ({c.label.lower()})" for c in self.columns)
+            )
+        return "\n".join(out)
+
+    def _role(self, param):
+        """What the shared machinery does with this knob, for the two it
+        singles out. Everything else is the design's own and the reading is
+        the whole story."""
+        if param.key == self.LENGTH_KEY:
+            return "  [the resonant length: what a scan sweeps]"
+        if param.key == self.WIDTH_KEY:
+            return "  [the track width: sizes the copper and the pads]"
+        return ""
 
 
 def mm(value):

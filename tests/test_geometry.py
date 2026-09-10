@@ -99,8 +99,12 @@ RIGHT, UP = (1, 0), (0, -1)  # KiCad Y-down: "up" is into the area
 def test_meander_straight_when_it_fits():
     run = geometry.meander_run((0.0, 0.0), RIGHT, UP, 8.0, 10.0, 5.0, 1.25)
     assert run.points == [(8.0, 0.0)]
-    assert (run.crossings, run.folds, run.depth, run.tail, run.span) == (
-        0, 0, 0.0, 0.0, 8.0,
+    assert (run.crossings, run.folds, run.cross, run.tail, run.advance) == (
+        0,
+        0,
+        0.0,
+        0.0,
+        8.0,
     )
 
 
@@ -108,10 +112,10 @@ def test_meander_folds_and_keeps_the_length_exact():
     # 30 mm of centerline into 10 mm of room: 20 mm must come from folds,
     # and 5 mm-deep ones buy 2 x 5 each -> 2 folds.
     start = (0.0, 0.0)
-    pts, crossings, depth, tail, span = geometry.meander_run(
-        start, RIGHT, UP, 30.0, 10.0, 5.0, 1.25
-    )
-    assert crossings == 4 and depth == tail == 5.0 and span == 10.0
+    run = geometry.meander_run(start, RIGHT, UP, 30.0, 10.0, 5.0, 1.25)
+    pts = run.points
+    assert run.crossings == 4 and run.cross == run.tail == 5.0
+    assert run.advance == 10.0 and run.lead == 0.0
     assert math.isclose(geometry.path_length([start] + pts), 30.0, abs_tol=1e-9)
     # 2 folds cross the band 4 times with 3 forward legs between them.
     assert len(pts) == 7
@@ -143,11 +147,11 @@ def test_meander_rides_the_far_border_and_keeps_the_whole_room():
     seen = []
     for length in (20.0, 30.0, 40.0, 47.0):
         run = geometry.meander_run(start, RIGHT, UP, length, 10.0, 5.0, 1.25)
-        assert run.depth == 5.0, length  # every full crossing to the border
+        assert run.cross == 5.0, length  # every full crossing to the border
         assert min(y for _x, y in run.points) == -5.0, length
-        assert run.span == 10.0, length  # ... and the whole room, every time
+        assert run.advance == 10.0, length  # ... and the whole room, every time
         assert max(x for x, _y in run.points) == 10.0, length
-        assert 0 < run.tail <= run.depth + 1e-9, length
+        assert 0 < run.tail <= run.cross + 1e-9, length
         assert math.isclose(
             geometry.path_length([start] + run.points), length, abs_tol=1e-9
         ), length
@@ -172,7 +176,7 @@ def test_meander_holds_the_room_and_the_border_across_a_fold_boundary():
         assert math.isclose(
             geometry.path_length([start] + run.points), length, abs_tol=1e-9
         ), length
-        assert run.span == room, length  # the whole width, at every length
+        assert run.advance == room, length  # the whole width, at every length
         top = min(y for _x, y in run.points)
         assert top >= -band - 1e-9, length  # ... and never past the border
         tops.append(round(top, 9))
@@ -238,7 +242,7 @@ def test_meander_folds_are_all_the_same_width_bar_a_whisker():
     step, uneven = 0.01, 0
     for i in range(701):  # one full fold cycle, 43 -> 50 mm (3 crossings)
         run = geometry.meander_run(start, RIGHT, UP, 43.0 + i * step, room, band, pitch)
-        legs = geometry.meander_legs(run.crossings, run.tail, run.span, pitch)
+        legs = geometry.meander_legs(run.crossings, run.tail, run.advance, pitch)
         if run.tail >= turnout:  # turned out: the comb is regular
             assert max(legs) - min(legs) < 1e-9, run.tail
         else:
@@ -343,9 +347,7 @@ def test_meander_is_the_fewest_crossings_at_the_full_room_and_band():
         want = _layouts(length, room, band, pitch)
         expect = (min(want), want[min(want)]) if want else None
         try:
-            run = geometry.meander_run(
-                (0.0, 0.0), RIGHT, UP, length, room, band, pitch
-            )
+            run = geometry.meander_run((0.0, 0.0), RIGHT, UP, length, room, band, pitch)
         except ValueError:
             # Refusing is only right when nothing could have been laid.
             assert expect is None, (length, room, band, pitch, expect)
@@ -353,10 +355,18 @@ def test_meander_is_the_fewest_crossings_at_the_full_room_and_band():
         assert expect is not None, (length, room, band, pitch)
         crossings, layout = expect
         assert run.crossings == crossings, (
-            length, room, band, pitch, run.crossings, sorted(want),
+            length,
+            room,
+            band,
+            pitch,
+            run.crossings,
+            sorted(want),
         )
-        assert (run.depth, run.tail, run.span) == layout, (
-            length, room, band, pitch,
+        assert (run.cross, run.tail, run.advance) == layout, (
+            length,
+            room,
+            band,
+            pitch,
         )
         checked += 1
     assert checked > 100, checked  # the grid really does exercise the rule
@@ -371,13 +381,13 @@ def test_meander_a_run_with_less_than_a_band_to_spare_steps_up():
     start = (0.0, 0.0)
     run = geometry.meander_run(start, RIGHT, UP, 13.0, 10.0, 5.0, 1.25)
     assert run.crossings == 1 and run.folds == 0
-    assert run.depth == run.tail == 3.0 and run.span == 10.0
+    assert run.cross == run.tail == 3.0 and run.advance == 10.0
     assert run.points == [(0.0, -3.0), (10.0, -3.0)]
     # A hair more room to spend and it is a fold: the step becomes a full
     # crossing of the band and the remainder starts the next one.
     run = geometry.meander_run(start, RIGHT, UP, 15.1, 10.0, 5.0, 1.25)
-    assert run.crossings == 2 and run.depth == 5.0
-    assert math.isclose(run.tail, 0.1) and run.span == 10.0
+    assert run.crossings == 2 and run.cross == 5.0
+    assert math.isclose(run.tail, 0.1) and run.advance == 10.0
 
 
 def test_meander_lets_the_last_crossing_be_thinner_than_the_track():
@@ -388,18 +398,112 @@ def test_meander_lets_the_last_crossing_be_thinner_than_the_track():
     # move every candidate around it in a sweep. It is gone again 5 mm later.
     start = (0.0, 0.0)
     run = geometry.meander_run(start, RIGHT, UP, 20.1, 10.0, 5.0, 1.25)
-    assert run.crossings == 3 and run.depth == 5.0 and run.span == 10.0
+    assert run.crossings == 3 and run.cross == 5.0 and run.advance == 10.0
     assert math.isclose(run.tail, 0.1)
-    assert math.isclose(
-        geometry.path_length([start] + run.points), 20.1, abs_tol=1e-9
-    )
+    assert math.isclose(geometry.path_length([start] + run.points), 20.1, abs_tol=1e-9)
     # The folds are on the border either side of the boundary, and the tip is
     # what moves: a hair off the near side here, the whole band later.
     assert min(y for _x, y in run.points) == -5.0
     assert math.isclose(run.points[-1][1], -0.1)
     run = geometry.meander_run(start, RIGHT, UP, 25.0, 10.0, 5.0, 1.25)
-    assert run.crossings == 3 and run.depth == run.tail == 5.0
-    assert min(y for _x, y in run.points) == -5.0 and run.span == 10.0
+    assert run.crossings == 3 and run.cross == run.tail == 5.0
+    assert min(y for _x, y in run.points) == -5.0 and run.advance == 10.0
+
+
+# --------------------------------------------------------------------------- #
+# The lead-in crossing (a run entering its band part way across)
+# --------------------------------------------------------------------------- #
+def test_meander_lead_in_is_short_and_every_crossing_after_it_is_full():
+    # A serpentine whose crossings run parallel to the feed edge starts where
+    # the feed is, which is not at a border: its first crossing reaches the
+    # near one only (3 of the 5 mm band) and the rest span the whole band.
+    start = (0.0, 0.0)
+    run = geometry.meander_run(start, RIGHT, UP, 28.0, 10.0, 5.0, 1.25, lead_mm=3.0)
+    assert run.lead == 3.0
+    # 18 mm across the band: 3 for the lead, then 5 + 5 + 5.
+    assert run.crossings == 4 and run.cross == run.tail == 5.0
+    reaches = [abs(b[1] - a[1]) for a, b in zip([start] + run.points, run.points)]
+    assert [round(r, 4) for r in reaches if r] == [3.0, 5.0, 5.0, 5.0]
+    assert math.isclose(geometry.path_length([start] + run.points), 28.0, abs_tol=1e-9)
+
+
+def test_meander_lead_in_leaves_the_length_and_the_advance_exact():
+    # The lead is one more thing held while the length sweeps: it is where the
+    # run entered, not a knob, so every candidate keeps the same first crossing
+    # and the same whole advance -- only the count and the tip move.
+    start = (0.0, 0.0)
+    for length in (14.0, 18.5, 21.0, 27.3, 33.0, 40.0):
+        run = geometry.meander_run(
+            start, RIGHT, UP, length, 10.0, 5.0, 1.25, lead_mm=3.0
+        )
+        assert run.lead == 3.0, length
+        assert run.advance == 10.0, length
+        assert math.isclose(
+            geometry.path_length([start] + run.points), length, abs_tol=1e-9
+        ), length
+
+
+def test_meander_without_a_lead_is_exactly_what_it_always_was():
+    # The default has to be the old function point for point -- the inverted-F
+    # never passes a lead, and its numbers are pinned by tests/test_ifa.py.
+    start = (0.0, 0.0)
+    for length in (8.0, 13.0, 20.1, 30.0, 47.0):
+        plain = geometry.meander_run(start, RIGHT, UP, length, 10.0, 5.0, 1.25)
+        explicit = geometry.meander_run(
+            start, RIGHT, UP, length, 10.0, 5.0, 1.25, lead_mm=None
+        )
+        assert plain == explicit, length
+        assert plain.lead == 0.0, length
+
+
+def test_meander_a_lead_of_nothing_collapses_instead_of_drawing_a_stub():
+    # A feed sitting on the border enters at the band's edge, so there is no
+    # lead-in crossing at all. It must not become a zero-length first segment
+    # (path_rects raises on one); the run is simply the full-crossing layout.
+    start = (0.0, 0.0)
+    plain = geometry.meander_run(start, RIGHT, UP, 30.0, 10.0, 5.0, 1.25)
+    for lead in (0.0, 1e-12):
+        run = geometry.meander_run(
+            start, RIGHT, UP, 30.0, 10.0, 5.0, 1.25, lead_mm=lead
+        )
+        assert run == plain, lead
+    assert all(a != b for a, b in zip([start] + plain.points, plain.points))
+
+
+def test_meander_a_run_that_ends_inside_its_lead_in_has_one_crossing():
+    # 2 mm across the band with a 3 mm lead: the run stops part way through
+    # the crossing it entered on. That crossing is the only one, so it is the
+    # tail -- there is no separate lead left to report.
+    start = (0.0, 0.0)
+    run = geometry.meander_run(start, RIGHT, UP, 12.0, 10.0, 5.0, 1.25, lead_mm=3.0)
+    assert run.crossings == 1 and run.lead == 0.0
+    assert run.cross == run.tail == 2.0
+    assert run.points == [(0.0, -2.0), (10.0, -2.0)]
+
+
+def test_meander_lead_in_slides_across_the_boundary_without_jumping():
+    # The property the whole turnout exists for, now with a lead in front of
+    # it: the boundaries are where the count changes, so the runs are compared
+    # as shapes (_walk) rather than point by point. A lead-in must not put a
+    # step back into a sweep the turnout took it out of.
+    start, prev, worst = (0.0, 0.0), None, 0.0
+    for i in range(2001):  # 13 -> 33 mm, across several crossing boundaries
+        run = geometry.meander_run(
+            start, RIGHT, UP, 13.0 + i * 0.01, 10.0, 5.0, 1.25, lead_mm=3.0
+        )
+        walk = _walk(start, run.points)
+        if prev is not None:
+            worst = max(worst, max(math.dist(a, b) for a, b in zip(prev, walk)))
+        prev = walk
+    assert worst < 1.7, worst
+
+
+def test_meander_rejects_a_lead_wider_than_the_band():
+    try:
+        geometry.meander_run((0.0, 0.0), RIGHT, UP, 30.0, 10.0, 5.0, 1.25, lead_mm=6.0)
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "outside the area" in str(exc)
 
 
 def test_meander_rejects_an_area_too_shallow_to_fold():
@@ -513,7 +617,7 @@ def test_centerline_segments_follow_the_points():
 
 
 def test_centerline_segments_rotate_about_the_pivot():
-    markergeom = load("markers.markergeom")
+    markergeom = load("emkit.markers.markergeom")
     geo = _geo()
     pivot = (20.0, 34.0)
     ((a, b),) = geo.centerline_segments(90.0, pivot)

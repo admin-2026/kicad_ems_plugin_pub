@@ -16,7 +16,7 @@ preview an antenna nobody asked for, as copper, as though it fitted.
 
 ```
         │←──────── arm ────────→│
-        ┌───────────────────────┐   ↑
+        ┌────────────────────────   ↑
         │                           stem
         ▲                           ↓
    ─────┴─────  feed edge (the port, against the ground pour)
@@ -49,22 +49,35 @@ class LMonopoleDesign(AntennaDesign):
         Param(
             "length",
             "Total track length",
-            # The quarter wave itself, over the band the automatic ladder
-            # covers -- this is the resonant parameter.
             Seed(0.72, 1.28, 1.0),
             "scan_lmonopole_length.png",
+            reading=(
+                "The whole centerline, feed to open tip: stem + arm. The "
+                "quarter wave itself, seeded over the band the automatic "
+                "ladder covers, and the parameter that sets the frequency."
+            ),
         ),
         Param(
             "width",
             "Track width",
             Seed(0.2, 2.0, 1.0, relative=False),
             "scan_lmonopole_width.png",
+            reading=(
+                "How wide the copper is drawn, in plain mm rather than "
+                "wavelengths. It sizes the footprint's pads with it."
+            ),
         ),
         Param(
             "stem",
             "Stem length",
             Seed(0.15, 0.5, 0.4),
             "scan_lmonopole_stem.png",
+            reading=(
+                "How far the trace runs straight in from the feed before it "
+                "bends; whatever the length has left becomes the arm along "
+                "the edge. It is also the antenna's clearance from the ground "
+                "pour, so too short a stem is refused rather than shorted."
+            ),
         ),
     )
 

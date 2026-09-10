@@ -17,12 +17,13 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import bare_package
 from bare_package import load, run_module_tests  # noqa: E402
 
 annotation = load("design.annotation")
 footprints = load("design.footprints")
 registry = load("design.registry")
-versions = load("versions")
+versions = load("emkit.versions")
 
 F0 = 2.45
 
@@ -76,20 +77,50 @@ def test_the_derived_geometry_is_not_recorded():
 def test_the_record_names_the_plugin_that_laid_the_copper_out():
     """A topology's layout can move between releases, so the same values
     re-solve into a subtly different antenna. The record says which plugin's
-    idea of them the copper beside it is -- and, on a host where that cannot
-    be established, says *that* rather than inventing one."""
+    idea of them the copper beside it is.
+
+    Two routes to that answer, and the second one is why this test changed.
+    The package's ``__version__`` is the first. But the command line reaches
+    the plugin through a *bare* package -- one with no ``__init__`` run,
+    because running it registers a toolbar button that belongs to KiCad -- and
+    there the import cannot answer at all, which used to make the row read
+    "unknown" on the surface most likely to be reporting a bug. So the file is
+    read as text instead (``versions._version_from_init``), and the bare
+    package these tests use is exactly that case."""
     design = registry.DESIGNS[0]
     values = design.default_values(F0)
-    pkg = sys.modules["antenna_plugin"]  # the bare package: no __version__
+    pkg = sys.modules[bare_package.PACKAGE]  # the bare package: no __version__
+    assert not hasattr(pkg, "__version__")
     assert annotation.record(design, values, F0)[1] == (
-        f"plugin_version={versions.UNKNOWN}"
+        f"plugin_version={_version_in_init()}"
     )
-    pkg.__version__ = "9.9.9"
+    pkg.__version__ = "9.9.9"  # an installed package, imported normally
     try:
         lines = annotation.record(design, values, F0)
     finally:
         del pkg.__version__
     assert lines[1] == "plugin_version=9.9.9"
+
+
+def test_a_tree_with_no_version_anywhere_says_so_rather_than_inventing_one():
+    """The honest end of the same rule: where neither route can answer, the
+    record says "unknown". A made-up version on a footprint somebody keeps is
+    worse than no version at all."""
+    original = versions.plugin_version
+    versions.plugin_version = lambda: versions.UNKNOWN
+    try:
+        design = registry.DESIGNS[0]
+        record = annotation.record(design, design.default_values(F0), F0)
+        assert record[1] == f"plugin_version={versions.UNKNOWN}"
+    finally:
+        versions.plugin_version = original
+
+
+def _version_in_init():
+    """What ``__init__.py`` says, read the way versions.py reads it."""
+    found = versions.plugin_version()
+    assert found != versions.UNKNOWN, "the package's __init__ has no __version__"
+    return found
 
 
 def test_a_knob_without_a_value_is_refused_not_recorded():

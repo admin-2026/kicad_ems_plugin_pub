@@ -8,19 +8,15 @@ imports pcbnew) so simulate's relative import of theme works:
 python3 tests/test_preflight.py  (or pytest)
 """
 
-import importlib
 import pathlib
 import sys
-import types
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "tests"))
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
+from bare_package import load  # noqa: E402
 from helppage import assert_guide_loads  # noqa: E402
 
-simulate = importlib.import_module("antenna_plugin.sim.simulate")
+simulate = load("emkit.sim.simulate")
 
 
 def _cu(thickness=0.035, name="Cu"):
@@ -139,9 +135,85 @@ def test_every_catalogued_id_ships_a_help_page():
         assert "<h1>" in text and 'class="lead"' in text, f"{pid}: empty guide"
 
 
+# --------------------------------------------------------------------------- #
+# the container, which is not a board problem but is a run-stopper
+# --------------------------------------------------------------------------- #
+def _container_problems(ready=True, use_docker=True, raises=None):
+    """container_problems() with the preference and the engine stood in for."""
+    hostprefs = load("emkit.hostprefs")
+    container = load("emkit.sim.container")
+    kept = (hostprefs.use_docker, container.status)
+    try:
+        hostprefs.use_docker = lambda *a, **k: use_docker
+
+        def probe(**kwargs):
+            if raises:
+                raise RuntimeError(raises)
+            return container.Status(
+                container.READY if ready else container.NO_DAEMON,
+                "the daemon is not answering",
+                "Start Docker Desktop.",
+            )
+
+        container.status = probe
+        return simulate.container_problems()
+    finally:
+        hostprefs.use_docker, container.status = kept
+
+
+def test_a_machine_that_solves_natively_is_not_asked_about_docker():
+    # It costs a process to ask, and most machines have no container to ask
+    # about. Nothing is spent on the question until the answer could matter.
+    assert _container_problems(use_docker=False) == []
+
+
+def test_a_container_that_is_not_ready_blocks_with_its_own_remedy():
+    # Found here it is a row in the banner with the fix on it. Found at launch
+    # it is a failed spawn in the middle of a log, minutes of gerber plotting
+    # after the user pressed Run.
+    (problem,) = _container_problems(ready=False)
+    assert problem.severity == "block"
+    assert "Start Docker Desktop." in problem.message
+    assert problem.help == "docker.html"
+    # ...and the probe's own state travels with it. One id covers every way a
+    # container can be unready, because they are one story and one guide; the
+    # window offers a Build button for the two states it can fix from there,
+    # and picking that out of the sentence would be the wrong way to know.
+    assert problem.state == "no_daemon"
+
+
+def test_a_ready_container_stops_nothing():
+    assert _container_problems(ready=True) == []
+
+
+def test_a_probe_that_raises_is_reported_and_not_propagated():
+    # Pre-flight runs while the banner is being drawn; an exception there would
+    # take the window's refresh with it.
+    (problem,) = _container_problems(raises="something odd")
+    assert "something odd" in problem.message
+
+
 def test_help_page_missing_asset_returns_none():
     p = simulate.Problem("not-a-real-problem", "block", "msg")
     assert simulate.help_page(p) is None
+
+
+def test_a_clean_answer_says_where_the_solver_answers_the_rest():
+    """A clean pre-flight is where a caller stops reading, so
+    the other half of the question -- the ground check, the lattice, the copper
+    around the port, all of them the solver's and none of them visible here --
+    has to name the verb that reads them back out of the run's log."""
+    check = load("emkit.agent.verbs.check")
+    clean = {
+        "ok": True,
+        "problems": [],
+        "covers": list(check.COVERS),
+        "defers_to_solver": list(check.DEFERS),
+        "solver_says": check.SOLVER_SAYS,
+    }
+    rendered = "\n".join(check.lines(clean))
+    assert "No problems with the board itself" in rendered
+    assert "run log --severity warning" in rendered
 
 
 if __name__ == "__main__":

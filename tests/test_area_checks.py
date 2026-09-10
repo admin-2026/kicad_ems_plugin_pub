@@ -13,21 +13,18 @@ The package is assembled by hand around the real modules because
 antenna_plugin/__init__ imports pcbnew:  python3 tests/test_area_checks.py
 """
 
-import importlib
 import pathlib
 import sys
 import types
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "tests"))
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
+from bare_package import load  # noqa: E402
 from helppage import assert_guide_loads  # noqa: E402
 
-ac = importlib.import_module("antenna_plugin.markers.area_checks")
-markergeom = importlib.import_module("antenna_plugin.markers.markergeom")
-simulate = importlib.import_module("antenna_plugin.sim.simulate")
+ac = load("markers.area_checks")
+markergeom = load("emkit.markers.markergeom")
+simulate = load("emkit.sim.simulate")
 
 RECT = (0.0, 0.0, 10.0, 10.0)
 
@@ -473,7 +470,7 @@ def test_copper_inside_a_footprint_is_detected():
     # whose copper is fp_poly graphics on the feed layer (footprints.sexpr), so
     # a walk that only looks at board drawings and pads sees nothing of it and
     # the overlap warning never fires.
-    from antenna_plugin.markers import area_marker
+    area_marker = load("markers.area_marker")
 
     board = _FakeBoard(
         [],
@@ -489,12 +486,17 @@ def test_copper_inside_a_footprint_is_detected():
     assert len(shapes) == 1 and shapes[0][0] == "poly"
     assert any(ac._shape_hits_rect(s, (10.0, 10.0, 30.0, 20.0)) for s in shapes)
 
-    # ... but the wizard's own preview, drawn on the feed layer inside the area
-    # marker, is a sketch of the candidate being judged, not copper it hits.
-    marker = _FakeBoard(
-        [], [_FakeFootprint(area_marker.MARKER_NAME, [_FakeShape(0, 5, 5, 35, 25)])]
-    )
-    assert _with_fake_pcbnew(lambda: list(ac._copper_shapes(marker, 0, clip))) == []
+    # ... but the plugin's own drawings are not: neither the area marker nor
+    # the preview footprint it is judged inside, whose polys on the feed layer
+    # are a sketch of the candidate being judged, not copper it hits.
+    preview = load("emkit.markers.preview")
+
+    for name in (area_marker.MARKER_NAME, preview.PREVIEW_NAME):
+        own = _FakeBoard([], [_FakeFootprint(name, [_FakeShape(0, 5, 5, 35, 25)])])
+        walk = _with_fake_pcbnew(
+            lambda board=own: list(ac._copper_shapes(board, 0, clip))
+        )
+        assert walk == []
 
 
 def test_a_pad_is_read_as_its_outline_not_its_bounding_box():

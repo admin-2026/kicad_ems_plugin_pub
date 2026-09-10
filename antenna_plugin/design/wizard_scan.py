@@ -74,7 +74,8 @@ import os
 from pathlib import Path
 from typing import NamedTuple
 
-from ..sim import config, simulate
+from .. import config
+from ..emkit.sim import simulate
 from . import geometry, measure, registry, scan_store, scan_views, sizing
 
 # A refined length this close to an already-scanned candidate is a re-run,
@@ -429,7 +430,7 @@ def best_result(results):
 # Running the sweep
 # --------------------------------------------------------------------------- #
 def run_scan(
-    exe,
+    launcher,
     gerbers,
     stack,
     base_params,
@@ -483,7 +484,7 @@ def run_scan(
         )
         results.append(
             _run_candidate(
-                exe,
+                launcher,
                 gerbers,
                 stack,
                 base_params,
@@ -503,7 +504,7 @@ def run_scan(
 
     if p.auto_length and not grid_only:
         _refine_length(
-            exe,
+            launcher,
             gerbers,
             stack,
             base_params,
@@ -551,7 +552,7 @@ def run_scan(
 
 
 def _refine_length(
-    exe,
+    launcher,
     gerbers,
     stack,
     base_params,
@@ -604,7 +605,7 @@ def _refine_length(
     _status(on_status, f"Refining: {refined:g} mm…")
     results.append(
         _run_candidate(
-            exe,
+            launcher,
             gerbers,
             stack,
             base_params,
@@ -623,7 +624,7 @@ def _refine_length(
 
 
 def _run_candidate(
-    exe,
+    launcher,
     gerbers,
     stack,
     base_params,
@@ -699,7 +700,7 @@ def _run_candidate(
         )
         config.write_yaml(cand_gerbers, stack, params, str(cand_dir / "pcb.yaml"))
         simulate.run_exe(
-            exe,
+            launcher,
             str(cand_dir / "pcb.yaml"),
             grid_only=grid_only,
             on_line=on_line,
@@ -713,7 +714,9 @@ def _run_candidate(
             return result
         result.update(
             measure.score(
-                (cand_dir / "pcb_data.json").read_text(encoding="utf-8"), spec["f0_ghz"]
+                (cand_dir / "pcb_data.json").read_text(encoding="utf-8"),
+                spec["f0_ghz"],
+                measure.match_db(spec.get("return_loss_db")),
             )
         )
         _say(

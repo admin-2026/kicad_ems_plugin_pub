@@ -55,27 +55,15 @@ does because the antenna is genuinely smaller.
     │← tap →│         (the port at the triangle, against the pour)
 ```
 
-The four knobs, and what each does:
-
-``length``  the resonant path (feed pin -> up to the arm -> open tip), the tap
-            excluded. Sets the frequency; it is the parameter the automatic λ/4
-            ladder and the 1/L refinement work on, exactly as for the monopole.
-``width``   track width.
-``height``  the *closest* the antenna may come back to the feed edge: the
-            level a folded arm's folds turn down to, and the first leg of the
-            resonant path. The loop the short pin, the tap and the ground plane
-            form is what makes an IFA broadband: more height widens the match.
-            It moves neither the antenna's width nor the far border its folds
-            rest on: the folds keep spanning the area and reaching the back of
-            it, so raising the height shortens them from the near end only, and
-            the meander takes another half turn to make the length back. It is
-            a floor, not a level -- an arm with no folds behind it is lifted off
-            it, up to the far border (``_split``).
-``tap``     the feed-to-short spacing. The impedance transformer: a tap close
-            to the short presents a low resistance, further along a higher one,
-            so this is the knob to sweep when the resonance is right but the
-            match is not. It buys nothing else: the arm keeps its length, its
-            folds and its height, and only the short pin moves.
+The four knobs -- ``length``, ``width``, ``height`` and ``tap`` -- each carry
+their own reading (``Param.reading``, printed by ``AntennaDesign.guide``), so
+what one does is written once, beside its seed, rather than here as well.
+Two of them are worth a word about how they interact with the drawing above:
+raising the ``height`` moves neither the antenna's width nor the far border its
+folds rest on -- the folds keep spanning the area and reaching the back of it,
+so it shortens them from the near end only and the meander takes another half
+turn to make the length back (``_split``); and widening the ``tap`` slides the
+short pin along the edge, moving nothing else at all.
 
 Only the layout is here; copper, gerber splice, port and footprint come from
 the shared engine through the :class:`~.base.AntennaDesign` contract. Pure --
@@ -120,28 +108,50 @@ class MeanderedIFADesign(AntennaDesign):
         Param(
             "length",
             "Resonant length",
-            # The quarter wave itself, over the band the automatic ladder
-            # covers -- feed pin to open tip, folds included, tap excluded.
             Seed(0.72, 1.28, 1.0),
             "scan_ifa_length.png",
+            reading=(
+                "The resonant path only: feed pin, up to the arm, along it to "
+                "the open tip, folds included and the tap excluded. The "
+                "quarter wave itself, seeded over the band the automatic "
+                "ladder covers."
+            ),
         ),
         Param(
             "width",
             "Track width",
             Seed(0.2, 2.0, 1.0, relative=False),
             "scan_ifa_width.png",
+            reading=(
+                "How wide the copper is drawn, in plain mm rather than "
+                "wavelengths. It sizes the footprint's pads with it."
+            ),
         ),
         Param(
             "height",
             "Minimum height over the feed edge",
             Seed(0.05, 0.25, 0.12),
             "scan_ifa_height.png",
+            reading=(
+                "The closest the antenna may come back to the feed edge — a "
+                "floor, not a level: the arm rides the area's far border "
+                "whatever the length, and this is only where its folds turn "
+                "back down to. The loop it opens against the pour is what "
+                "makes an inverted-F broadband, so more height widens the "
+                "match."
+            ),
         ),
         Param(
             "tap",
             "Feed-to-short spacing",
             Seed(0.03, 0.2, 0.08),
             "scan_ifa_tap.png",
+            reading=(
+                "The impedance transformer, and nothing else: close to the "
+                "short is a low resistance, further along a higher one. Sweep "
+                "this when the resonance is right and the match is not — the "
+                "arm keeps its length, its folds and its height."
+            ),
         ),
     )
 
@@ -194,13 +204,13 @@ class MeanderedIFADesign(AntennaDesign):
                 "height_mm": round(fr.height, 4),
                 "tap_mm": round(fr.tap, 4),
                 "arm_mm": round(arm, 4),
-                "folds": run.folds,
-                "crossings": run.crossings,
-                "fold_depth_mm": run.depth,
-                # The last crossing, short of a full fold where the length
-                # asked for half a one (geometry.Meander).
-                "tail_mm": run.tail,
-                "span_mm": run.span,
+                # This design's own words for the run's two axes: it crosses
+                # the depth behind its arm and advances along the feed edge, so
+                # the engine's neutral `cross` is a fold depth here and its
+                # `advance` is the arm's span. `tail_mm` comes with them: the
+                # last crossing, short of a full fold where the length asked
+                # for half a one (geometry.Meander.metrics).
+                **run.metrics("fold_depth_mm", "span_mm"),
                 "edge": edge,
             },
         )
@@ -277,9 +287,7 @@ class MeanderedIFADesign(AntennaDesign):
         # end on one (geometry.meander_plan), so this is not rounded to whole
         # folds.
         crossings = (
-            0
-            if fr.depth_left < fr.pitch
-            else int(fr.edge.room_mm // fr.pitch) + 1
+            0 if fr.depth_left < fr.pitch else int(fr.edge.room_mm // fr.pitch) + 1
         )
         return fr.height + fr.edge.room_mm + crossings * fr.depth_left
 

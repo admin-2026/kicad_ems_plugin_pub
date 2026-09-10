@@ -29,18 +29,17 @@ layer, whichever Advanced pane the user picks it in.
 
 import wx
 
-from ..sections import (
+from ...emkit.gui.sections import (
     AdvancedSection,
     FeedMarkerSection,
     IntroSection,
     LogSection,
-    PatternFreqSection,
     PreflightBanner,
     RunResultsSection,
-    RunSection,
     SpeedSection,
 )
-from ..viewers import ViewerHub
+from ...emkit.gui.viewers import ViewerHub
+from ..sections import PatternFreqSection, RunSection
 from .designform import DesignFormPage
 
 
@@ -134,7 +133,7 @@ class SimulatePage(DesignFormPage):
         designer's into its Scan section)."""
         return self.run.knobs
 
-    # --- persisted form (gui.settings) ----------------------------------------
+    # --- persisted form (emkit.settings) -----------------------------------
     # This page's share of the settings file is exactly what the shared model
     # carries (Design target, Advanced, the marker section's feed-width /
     # Feed-layer / Marker-layer picks and the pass knobs), so it is that

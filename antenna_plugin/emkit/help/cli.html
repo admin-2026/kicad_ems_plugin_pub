@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<!-- The command-line guide, opened from the About page's Command line box
+     (gui.sections.cli, beside the tick that installs the shortcut this page
+     describes). Like settings.html it belongs to no Problem: it is
+     the second frontend explained once, for a reader who has a shell and
+     wants the window's work done from it -- or who is handing this plugin to
+     an agent and needs the one command to give it.
+
+     The long form of this is docs/cli-for-llm.md, which is a developer
+     document and does not ship. Keep the two agreeing: the verb table, the
+     interpreter table and the "cannot do" list are the parts that go stale.
+
+     The one thing this page cannot spell is the name of the shortcut its
+     examples type: it is the product's (antenna-agent, si-agent) and the core
+     may not name a product. So the examples carry the token
+     assemble.SHORTCUT_TOKEN, which tools/assemble.py substitutes on the way
+     into build/<name>/ -- the same per-product staging that drops another
+     product's result page. What the reader gets is a command they can copy,
+     not a placeholder to translate.
+
+     Styled by emkit/assets/palette.css + help_theme.css, linked relative to
+     this file, exactly as the guides beside it are. Plain HTML: no module
+     scripts, no CDN, no network. The theme's whole vocabulary is
+       main.doc > h1, p.lead, h2, p, ol/ul > li, table, div.note
+     with code / span.path inline -- there is no <pre>, so a command line is
+     inline <code> in a paragraph or a table cell. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugin help — Driving this plugin from a command line</title>
+<link rel="stylesheet" href="../assets/palette.css">
+<link rel="stylesheet" href="../assets/help_theme.css">
+</head>
+<body>
+<main class="doc">
+<h1>From a <em>command line</em></h1>
+<p class="lead">Everything this plugin does — checking a board, running a
+simulation, reading what it came to — can also be done by typing a command
+instead of pressing a button. This page is what to type, and what comes
+back.</p>
+
+<h2>What it is for</h2>
+
+<p>The window and the command line are two ways into the same work: the same
+board, the same <span class="path">simulation/</span> folder beside it, the
+same answers. The window reads its boxes when you press Run; the command line
+reads what the window saved. So neither is a lesser copy of the other — but
+typing is what you want when the one doing the work is not a person sitting
+here:</p>
+
+<ul>
+  <li><strong>Doing it again.</strong> The same check on ten boards, or on one
+      board after every edit, without ten trips through this window.</li>
+  <li><strong>A script, or a CI job.</strong> Every command can answer in JSON
+      as readily as in sentences, so something else can read it.</li>
+  <li><strong>An AI agent.</strong> It has no hands for a dialog box. Given one
+      command it can check a board, start a simulation, watch it and read the
+      result.</li>
+</ul>
+
+<div class="note"><strong>Handing this to an agent?</strong> Give it one
+command: <code>antenna-agent guide</code>. That prints the whole briefing —
+what this plugin does, the order the commands go in, what a run costs, which
+files beside your board are safe to edit, and what this plugin can build.
+It needs no board and takes seconds, and it is what the rest of this page
+says, written for something with no eyes on this window.</div>
+
+<h2>Start here: the shortcut</h2>
+
+<p>On the About page — the one that opened this guide — find the
+<em>Command line</em> box and tick <em>Install the shortcut</em>. The box then
+shows you a command; open a <strong>new</strong> terminal and type it:</p>
+
+<p><code>antenna-agent versions</code></p>
+
+<p>If it answers with a table of version numbers, everything below this line
+works and you can skip to <em>The commands</em>.</p>
+
+<div class="note"><strong>Why a new terminal?</strong> A terminal that is
+already open keeps the settings it started with, and the tick has just changed
+one of them. Ticking the box writes a small script — with the right Python and
+this install's path already filled in — and adds the folder holding it to your
+own PATH, which is the list of places your terminal looks for a command. Only
+your account's, never the machine's, and nothing that asks for a password.
+Unticking removes both, exactly.</div>
+
+<h2>Which Python</h2>
+
+<p><strong>You should not have to name one, and you should not install one for
+this.</strong> The shortcut has KiCad's own Python written into it — the
+interpreter this window is running under, recorded the moment it opened, which
+is the one moment the answer is known for certain.</p>
+
+<p>That matters because reading a board needs <code>pcbnew</code>, the module
+KiCad's Python has and no other Python does. A virtualenv, a pyenv shim or
+Windows' Microsoft Store <code>python.exe</code> will all fail to find it,
+however KiCad was installed — so if you ever go looking for an interpreter
+yourself, it is one of these and nothing else:</p>
+
+<table>
+  <tr><th>System</th><th>KiCad's interpreter</th></tr>
+  <tr><td>Linux</td><td><span class="path">/usr/bin/python3</span> —
+      <code>pcbnew</code> ships inside the <span class="path">kicad</span>
+      package; there is no <span class="path">python3-pcbnew</span> to
+      install</td></tr>
+  <tr><td>Windows</td><td><span class="path">C:\Program Files\KiCad\&lt;version&gt;\bin\python.exe</span>
+      — not on <span class="path">PATH</span> by default</td></tr>
+  <tr><td>macOS</td><td><span class="path">KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3</span></td></tr>
+</table>
+
+<h2>The commands</h2>
+
+<p>Each one is a word, or two: <code>preflight</code>, <code>run start</code>,
+<code>results show</code>. Every one of them answers on
+<em>standard output</em> and answers alone — nothing here opens a window, and
+nothing waits for you to click.</p>
+
+<table>
+  <tr><th>Verb</th><th>What it answers</th></tr>
+  <tr><td><span class="path">guide</span></td><td>The whole briefing in one
+      page — written for an agent, readable by anyone. Needs no board.</td></tr>
+  <tr><td><span class="path">settings init</span></td><td>Writes a starter
+      settings file for a board that has none — the same form this window
+      saves, with the frequency left for you to fill in.</td></tr>
+  <tr><td><span class="path">preflight</span></td><td>What would stop a run:
+      the same checks as the banner at the top of this window.</td></tr>
+  <tr><td><span class="path">run start</span></td><td>Starts a solver and
+      answers with a job id, immediately. See below.</td></tr>
+  <tr><td><span class="path">run status</span></td><td>Which phase, how long,
+      and whether it is still going.</td></tr>
+  <tr><td><span class="path">run log</span></td><td>The solver's output. It is
+      a flood, so <span class="path">--since</span> resumes from the offset
+      the last one returned.</td></tr>
+  <tr><td><span class="path">run sample</span></td><td>Write a report from the
+      record so far and <em>keep stepping</em>.</td></tr>
+  <tr><td><span class="path">run stop</span></td><td>End early. See the note
+      below — this is not throw-away.</td></tr>
+  <tr><td><span class="path">results show</span></td><td>What the last run came
+      to: the numbers, the verdict, and the address of the page that draws
+      them.</td></tr>
+  <tr><td><span class="path">versions</span></td><td>The same table the About
+      page shows — the things to quote when something misbehaves.</td></tr>
+  <tr><td><span class="path">docker status</span></td><td>Whether a solve can
+      run inside a container on this machine — and if it cannot, what to do
+      about it.</td></tr>
+  <tr><td><span class="path">docker build</span></td><td>Build that container's
+      image. Minutes: it installs KiCad.</td></tr>
+  <tr><td><span class="path">docker rebuild</span></td><td>Delete the image and
+      build it again — what a plugin upgrade needs, since the plugin's own code
+      is inside it.</td></tr>
+  <tr><td><span class="path">docker on</span></td><td>Run solves in a container
+      from now on, on this machine.</td></tr>
+  <tr><td><span class="path">docker off</span></td><td>Run them natively again.
+      Refused where no native solver ships.</td></tr>
+</table>
+
+<p>Every command but <span class="path">guide</span>,
+<span class="path">versions</span> and <span class="path">docker</span> takes
+<code>--board &lt;path.kicad_pcb&gt;</code> — it reads the file, not whatever
+this window has open — and <code>--help</code> on any of them is the full list
+of its options.</p>
+
+<h2>Running the solver in a container</h2>
+
+<p>A run is otherwise a native process with your own rights, reading and
+writing anywhere you can. That is fine when you started it and are watching it.
+When something else is driving — a script, an agent — a solver that can see one
+mounted directory and no network is a better default, and it costs a flag:</p>
+
+<p><code>antenna-agent run start --board b.kicad_pcb --docker</code></p>
+
+<p>The image holds KiCad, this plugin, its command line and the solver, so it is
+also somewhere to <em>work</em>: mount a project directory at
+<span class="path">/work</span> and every command on this page is there, with
+the shortcut already installed. <span class="path">docker status</span> names
+the image; the project's <span class="path">docs/docker.md</span> has the
+commands for opening a shell in one.</p>
+
+<p>Build it once with <span class="path">docker build</span>, and again after
+every plugin upgrade — the plugin's own code is copied into the image, so an
+upgraded install asks for an image tag that does not exist yet.
+<span class="path">docker status</span> says which of those is true right now.
+On macOS this is not optional: no macOS build of the solver ships, so
+<span class="path">docker off</span> is refused there and every run goes
+through the container.</p>
+
+<p>Add <span class="path">--json</span> to any command and the answer comes
+back as JSON instead of sentences. The flag goes <em>before</em> the command,
+and a usage error comes back as JSON too, so a program reading the output never
+has to also watch for an English sentence on the error stream.</p>
+
+<h2>A run takes minutes, so it detaches</h2>
+
+<p>A solve is minutes, not seconds, so <span class="path">run start</span> does
+not wait: it hands back a <em>job id</em> — the timestamp naming the folder that
+run is writing into — and leaves the solver going. Follow it with
+<span class="path">run status</span> and <span class="path">run log</span>,
+sample it or stop it at any point, and read it with
+<span class="path">results show</span> when it ends.</p>
+
+<div class="note"><strong>Stop still writes a report.</strong> Both
+<span class="path">stop</span> and <span class="path">sample</span> are
+requests the solver picks up on its next step, and stopping writes the report
+for the record so far rather than throwing it away — the same thing this
+window's Stop button does. Because the channel is a file and not a signal, both
+reach a run whoever started it: this window, another shell, or a session that
+has since closed.</div>
+
+<p>What is <em>refused</em> rather than warned about is a second run on a board
+that already has one going — they would write one config, overwrite each
+other's dumps and share one stop request. The refusal names the job already
+running and how to end it. A run alongside a different board's run is fine.</p>
+
+<h2>One run, start to finish</h2>
+
+<p>Below, <code>board.kicad_pcb</code> stands for the path to your board. One
+thing to know before you start: a run is built from the board's
+<span class="path">simulation/settings.yaml</span> — the same form this window
+saves whenever it closes or starts a run. Edit a <em>copy</em> of that file and
+point the run at it (<code>--settings my.yaml</code>): this window rewrites its
+own. A board that has never had this window open on it has no such file, and
+<code>antenna-agent settings init --board board.kicad_pcb</code> writes one.</p>
+
+<ol>
+  <li><code>antenna-agent preflight --board board.kicad_pcb</code> — is there anything
+      wrong with the board itself? Costs milliseconds, and is worth doing
+      first: everything it reports would stop the run anyway.</li>
+  <li><code>antenna-agent run start --board board.kicad_pcb --settings my.yaml</code>
+      — runs a copy of the settings file that you edited, instead of the one
+      this window keeps rewriting. Leave the flag off to run the board's
+      own.</li>
+  <li><code>antenna-agent run start --board board.kicad_pcb --grid-only</code> — the
+      mesh alone, which is the short part of a run: it stops once the lattice
+      is built, and everything the solver has to say about the board — the cell
+      it settled on and every ground warning — is printed before that point.
+      Read it with <span class="path">run log</span>; it writes the grid and no
+      report, so there is nothing new for <span class="path">results show</span>.
+      The mesh it previews is the one the solve would use.</li>
+  <li><code>antenna-agent run start --board board.kicad_pcb</code> — answers a job id
+      straight away and leaves the solver going. What the results are judged
+      against is the settings file's, not a flag's: the run is scored against
+      the design target the form names — the same pick this window's target
+      picker writes into it — so editing that one field is how a run is aimed.
+      A flow with nothing to judge against reports its numbers unjudged and
+      says so.</li>
+  <li><code>antenna-agent run status --board board.kicad_pcb</code> — which phase, how
+      long, and whether it is still going. This is the one to poll.</li>
+  <li><code>antenna-agent run log --board board.kicad_pcb --since 240</code> — the
+      solver's output from line 240 on. Every log answers with the offset to
+      pass next time, so a poller never re-reads what it has seen.</li>
+  <li><code>antenna-agent results show --board board.kicad_pcb</code> — the numbers,
+      the verdict against the form's target, and the address of the page that draws
+      them.</li>
+</ol>
+
+<p>Any of them in JSON, with the flag before the command:
+<code>antenna-agent --json run status --board board.kicad_pcb</code>.</p>
+
+<h2>The rest, in one line each</h2>
+
+<table>
+  <tr><th>Command</th><th>Why</th></tr>
+  <tr><td><code>antenna-agent run sample --board board.kicad_pcb</code></td>
+      <td>Write a report from the record so far without ending the run — a
+          look at where it is going, mid-flight.</td></tr>
+  <tr><td><code>antenna-agent run stop --board board.kicad_pcb</code></td>
+      <td>End early, keeping the report. Reaches a run this window started as
+          readily as one a shell did.</td></tr>
+  <tr><td><code>antenna-agent run status --board board.kicad_pcb --job 20260902-181500</code></td>
+      <td>An older run rather than the newest. A job id is the stamp of the run
+          folder it wrote; <span class="path">--board</span> is still what says
+          which board's runs to look through.</td></tr>
+  <tr><td><code>antenna-agent results show --board board.kicad_pcb --job 20260902-181500</code></td>
+      <td>The numbers of that same older run. Every command takes the one id —
+          there is no path to a dump to look up, and a run this window started
+          is readable by its stamp too.</td></tr>
+  <tr><td><code>antenna-agent settings init --board board.kicad_pcb --out my.yaml</code></td>
+      <td>A starter form of your own, somewhere this window will not overwrite
+          it. Every key it can hold, and what each picked value means, is in
+          <code>antenna-agent guide</code>.</td></tr>
+  <tr><td><code>antenna-agent run start --help</code></td>
+      <td>The full options of any command. There is nothing this page has that
+          <span class="path">--help</span> does not.</td></tr>
+</table>
+
+<p><strong><span class="path">--help</span> works at every level.</strong> Add
+it to as much of a command as you have typed and it answers about that much:
+<code>antenna-agent --help</code> lists the commands,
+<code>antenna-agent run --help</code> the things <span class="path">run</span>
+does and the options they take, <code>antenna-agent run start --help</code> the
+same for that one. So there is nothing to memorise from this page — every
+command tells you the rest of itself.</p>
+
+<h2>What it cannot do</h2>
+
+<ul>
+  <li><strong>It will not fill the form in for you.</strong>
+      <span class="path">settings init</span> writes the toggles, the picks and
+      a material row per layer, and leaves blank everything the plugin has no
+      business choosing — there is no default frequency for a board. A run
+      refuses a blank one by name rather than inventing a number.</li>
+  <li><strong>It cannot see the board you have open.</strong> It loads the
+      file from a path and reads it as it was last <em>saved</em>. An unsaved
+      edit is invisible to it; zone fills are read as stored, and nothing
+      refills them.</li>
+  <li><strong>It does not draw on the board.</strong> Placing markers and
+      copper is this window's work.</li>
+</ul>
+
+<div class="note"><strong>No silent defaults, here least of all.</strong> A
+missing input fails and names itself rather than being filled in with a
+plausible number. That rule matters more at a command line than at a form: a
+caller leaving a field out is easier to do, and harder to notice, than a person
+clearing a box.</div>
+
+</main>
+</body>
+</html>

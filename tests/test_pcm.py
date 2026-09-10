@@ -28,18 +28,28 @@ import sys
 import types
 import zipfile
 
+import solver_bytes
 from tools_module import ROOT, load
 
 install = load("install")
 packager = load("make_package")
 pcm = load("pcm")
 
-WINDOWS = packager.WINDOWS
-LINUX = packager.LINUX
-PLATFORMS = (WINDOWS, LINUX)
+builds = packager.builds
+WINDOWS = builds.WINDOWS
+LINUX_X86_64 = builds.LINUX_X86_64
+LINUX_AARCH64 = builds.LINUX_AARCH64
+EVERY = list(builds.BUILDS)
 
-FAKE_EXE = b"MZ\x90\x00"
-FAKE_ELF = b"\x7fELF\x02\x01\x01" + bytes(11) + b"\x3e\x00"  # e_machine = x86-64
+# This product's solver -- off the manifest, since these tests run in every
+# assembled product (see emkit/tests/test_install.py); the per-machine names
+# come off the build table for the same reason.
+STEM = install.PRODUCT.BINARY
+
+
+def name(build):
+    return build.filename(STEM)
+
 
 # --- from the v1 schema ---------------------------------------------------- #
 IDENTIFIER_PATTERN = r"^[a-zA-Z][-a-zA-Z0-9.]{0,98}[a-zA-Z0-9]$"
@@ -83,38 +93,37 @@ def _load_simulate(path=None):
     if path is None:
         from bare_package import load
 
-        return load("sim.simulate")
+        return load("emkit.sim.simulate")
 
     installed = path.parent.parent
     package = types.ModuleType(installed.name)
     package.__path__ = [str(installed)]
     sys.modules[installed.name] = package
-    return importlib.import_module(f"{installed.name}.sim.simulate")
+    return importlib.import_module(f"{installed.name}.emkit.sim.simulate")
 
 
-def _staged(tmp_path, monkeypatch, platforms=PLATFORMS):
-    """The PCM tree, staged from a binaries/ with both builds in it."""
+def _staged(tmp_path, monkeypatch, wanted=None):
+    """The PCM tree, staged from a binaries/ with every build in it."""
+    wanted = EVERY if wanted is None else list(wanted)
     binaries = tmp_path / "binaries"
-    binaries.mkdir(exist_ok=True)
-    (binaries / "monopole").write_bytes(FAKE_ELF)
-    (binaries / "monopole.exe").write_bytes(FAKE_EXE)
+    solver_bytes.populate(binaries, STEM, builds.BUILDS)
     monkeypatch.setattr(install, "BINARIES_DIR", binaries)
 
-    stage_dir = tmp_path / ("pcm-" + "-".join(p.key for p in platforms))
-    packager.stage_pcm(stage_dir, list(platforms))
+    stage_dir = tmp_path / ("pcm-" + "-".join(build.tag for build in wanted))
+    packager.stage_pcm(stage_dir, wanted)
     return stage_dir
 
 
-def _zipped(tmp_path, monkeypatch, platforms=PLATFORMS):
+def _zipped(tmp_path, monkeypatch, wanted=None):
     """The staged tree, archived -- what a user actually hands to KiCad."""
-    stage_dir = _staged(tmp_path, monkeypatch, platforms)
+    stage_dir = _staged(tmp_path, monkeypatch, wanted)
     archive = tmp_path / f"{stage_dir.name}.zip"
-    packager.make_pcm_zip(stage_dir, archive, list(platforms))
+    packager.make_pcm_zip(stage_dir, archive, EVERY if wanted is None else list(wanted))
     return zipfile.ZipFile(archive)
 
 
-def _metadata(tmp_path, monkeypatch, platforms=PLATFORMS):
-    stage_dir = _staged(tmp_path, monkeypatch, platforms)
+def _metadata(tmp_path, monkeypatch, wanted=None):
+    stage_dir = _staged(tmp_path, monkeypatch, wanted)
     return json.loads((stage_dir / "metadata.json").read_text(encoding="utf-8"))
 
 
@@ -143,18 +152,18 @@ def test_the_payload_is_unwrapped_inside_plugins(tmp_path, monkeypatch):
     plugins = _staged(tmp_path, monkeypatch) / "plugins"
     assert (plugins / "__init__.py").is_file()
     assert (plugins / "action_plugin.py").is_file()
-    assert not (plugins / install.PLUGIN_NAME).exists()
+    assert not (plugins / install.PRODUCT.PACKAGE).exists()
 
 
-def test_every_os_solver_is_bundled_where_the_plugin_looks_for_it(
+def test_every_machines_solver_is_bundled_where_the_plugin_looks_for_it(
     tmp_path, monkeypatch
 ):
-    # One archive installs on every OS, so it has to carry every OS's build --
-    # side by side under the payload root, which is where simulate.locate()
-    # walks to and where hostos then chooses between them.
+    # One archive installs on every machine, so it has to carry every machine's
+    # build -- side by side under the payload root, which is where
+    # simulate.locate() walks to and where sim.builds then chooses between them.
     binaries = _staged(tmp_path, monkeypatch) / "plugins" / "binaries"
     assert sorted(p.name for p in binaries.iterdir()) == sorted(
-        platform.binary for platform in PLATFORMS
+        name(build) for build in EVERY
     )
 
 
@@ -186,15 +195,31 @@ def test_the_package_says_the_solver_is_not_free_for_commercial_use(
 
 
 def test_narrowing_the_build_narrows_the_payload(tmp_path, monkeypatch):
-    # `make_package.py windows --format pcm` is a package for Windows alone:
-    # it says so in its metadata, and it must not carry a solver it does not
-    # declare.
+    # `make_package.py windows` is a package for Windows alone: it says so in
+    # its metadata, and it must not carry a solver it does not declare.
     stage_dir = _staged(tmp_path, monkeypatch, [WINDOWS])
     binaries = stage_dir / "plugins" / "binaries"
-    assert [p.name for p in binaries.iterdir()] == [WINDOWS.binary]
+    assert [p.name for p in binaries.iterdir()] == [name(WINDOWS)]
 
     data = json.loads((stage_dir / "metadata.json").read_text(encoding="utf-8"))
     assert data["versions"][0]["platforms"] == ["windows"]
+
+
+def test_narrowing_to_linux_still_carries_both_of_its_builds(tmp_path, monkeypatch):
+    # An OS is the finest thing PCM's metadata can say, so a Linux package is
+    # offered to x86-64 and AArch64 machines alike and has to carry both -- one
+    # name in the metadata, two files in the payload.
+    stage_dir = _staged(tmp_path, monkeypatch, packager.requested("linux"))
+    binaries = stage_dir / "plugins" / "binaries"
+    assert sorted(p.name for p in binaries.iterdir()) == sorted(
+        [name(LINUX_X86_64), name(LINUX_AARCH64)]
+    )
+
+    # And it is offered to macOS as well, which has no build of its own: what
+    # a Mac installs it for is the container, and the container runs one of
+    # these two.
+    data = json.loads((stage_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert data["versions"][0]["platforms"] == ["linux", "macos"]
 
 
 def test_the_zip_carries_the_execute_bit_for_every_solver(tmp_path, monkeypatch):
@@ -202,8 +227,8 @@ def test_the_zip_carries_the_execute_bit_for_every_solver(tmp_path, monkeypatch)
     # applies the entry's mode. Without it the solver installs unrunnable and
     # fails at the first simulation.
     archive = _zipped(tmp_path, monkeypatch)
-    for platform in PLATFORMS:
-        solver = archive.getinfo(f"plugins/binaries/{platform.binary}")
+    for build in EVERY:
+        solver = archive.getinfo(f"plugins/binaries/{name(build)}")
         assert solver.create_system == 3, "a mode is only readable off a Unix entry"
         assert solver.external_attr >> 16 & 0o111 == 0o111
 
@@ -243,7 +268,7 @@ def test_the_version_entry_matches_the_schema(tmp_path, monkeypatch):
     assert re.match(KICAD_VERSION_PATTERN, version["kicad_version"])
     # The archive declares exactly the OSes whose solver is inside it, so PCM
     # refuses it anywhere it could not simulate.
-    assert version["platforms"] == [platform.key for platform in PLATFORMS]
+    assert version["platforms"] == packager.platforms_of(EVERY)
     assert set(version["platforms"]) <= PLATFORM_NAMES
 
 
@@ -257,9 +282,9 @@ def test_the_metadata_in_the_archive_claims_no_download(tmp_path, monkeypatch):
 
 
 def test_the_project_is_named_once(tmp_path, monkeypatch):
-    # The URL comes from the plugin's own links module, so the package and the
-    # About page can never point at different projects.
-    links = install.load_plugin_module("links.py")
+    # Both the package's metadata and the About page's link read the same
+    # manifest, so they can never point at different projects.
+    links = install.load_plugin_module("emkit", "links.py")
     data = _metadata(tmp_path, monkeypatch)
     assert data["resources"]["homepage"] == links.GITHUB_URL
     assert data["author"]["contact"]["web"] == links.GITHUB_URL
@@ -270,7 +295,7 @@ def test_the_identifier_survives_kicads_rename(tmp_path, monkeypatch):
     # into underscores, then imports it. Dots would make Python read the name
     # as a submodule path, so what is left has to be a name importlib can
     # actually import.
-    installed = pcm.IDENTIFIER.replace(".", "_")
+    installed = pcm.PRODUCT.PCM_ID.replace(".", "_")
     assert "." not in installed
     assert installed.isascii() and " " not in installed
     assert installed[0].isalpha()
@@ -285,12 +310,12 @@ def _self_imports(path):
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.split(".")[0] == install.PLUGIN_NAME:
+                if alias.name.split(".")[0] == install.PRODUCT.PACKAGE:
                     yield alias.name
         elif isinstance(node, ast.ImportFrom):
             # level > 0 is a relative import, which is what this asks for.
             if node.level == 0 and node.module:
-                if node.module.split(".")[0] == install.PLUGIN_NAME:
+                if node.module.split(".")[0] == install.PRODUCT.PACKAGE:
                     yield node.module
 
 
@@ -299,7 +324,7 @@ def test_the_plugin_never_imports_itself_by_name():
     # antenna_plugin, so an absolute self-import would raise ImportError there
     # while working from every other install route.
     offenders = {}
-    for path in sorted((ROOT / install.PLUGIN_NAME).rglob("*.py")):
+    for path in sorted(install.SOURCE.rglob("*.py")):
         found = sorted(set(_self_imports(path)))
         if found:
             offenders[str(path.relative_to(ROOT))] = found
@@ -309,15 +334,16 @@ def test_the_plugin_never_imports_itself_by_name():
 def test_the_payload_matches_what_the_checkout_installs(tmp_path, monkeypatch):
     # The two ways the plugin reaches a KiCad -- this package, and `make
     # install` from a checkout (tools/install.py) -- have to put the same tree
-    # there. They may differ in the directory's name and in how many solver
-    # builds travel with it, never in what the plugin itself is.
-    monkeypatch.setattr(install, "host_exe_names", lambda: (WINDOWS.binary,))
-    packaged = _staged(tmp_path, monkeypatch, [WINDOWS]) / "plugins"
+    # there. They may differ in the directory's name, never in what the plugin
+    # itself is. They no longer differ in the binaries either: both carry every
+    # shipped build, because any host may run its solver in a container and the
+    # container's build is not the host's.
+    packaged = _staged(tmp_path, monkeypatch, packager.requested(None)) / "plugins"
 
     dest_root = tmp_path / "kicad-plugins"
     dest_root.mkdir()
     install.cmd_install(dest_root)
-    installed = dest_root / install.PLUGIN_NAME
+    installed = dest_root / install.PRODUCT.PACKAGE
 
     def tree(root):
         return sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
@@ -328,10 +354,30 @@ def test_the_payload_matches_what_the_checkout_installs(tmp_path, monkeypatch):
 def test_no_python_and_no_installer_script_ship_in_the_package(tmp_path, monkeypatch):
     # PCM's whole point here is that the user's machine is not asked for
     # anything: KiCad does the copying, so nothing in the archive is meant to
-    # be run to install it.
+    # be run *to install it*.
+    #
+    # The container's entrypoint is the one script that ships, and it is the
+    # exception that proves the rule: it never runs on the user's machine at
+    # all. It is copied into an image at `docker build` and executed inside a
+    # container, which is exactly why it is excused here by name rather than by
+    # loosening the check -- the next .sh to appear in a payload should still
+    # have to argue for itself.
     names = _zipped(tmp_path, monkeypatch).namelist()
-    assert not [n for n in names if n.endswith((".ps1", ".bat", ".sh"))]
+    scripts = [n for n in names if n.endswith((".ps1", ".bat", ".sh"))]
+    assert scripts == ["plugins/emkit/sim/container/entrypoint.sh"]
     assert not [n for n in names if pathlib.PurePosixPath(n).name == "install.py"]
+
+
+def test_the_container_recipe_ships(tmp_path, monkeypatch):
+    # A feature whose recipe did not ship fails only on the user's machine, and
+    # invisibly here: the Dockerfile and the entrypoint are not .py files, so
+    # nothing else about the payload would notice their absence.
+    names = _zipped(tmp_path, monkeypatch).namelist()
+    for wanted in (
+        "plugins/emkit/sim/container/Dockerfile",
+        "plugins/emkit/sim/container/entrypoint.sh",
+    ):
+        assert wanted in names
 
 
 # --------------------------------------------------------------------------- #
@@ -342,37 +388,46 @@ def test_the_package_is_named_for_covering_everything(tmp_path, monkeypatch):
     # one add-on. A narrowed build says which, so it can't overwrite the real
     # release in dist/.
     version = packager.plugin_version()
-    assert packager.pcm_name(list(PLATFORMS)) == f"AntennaDesigner-{version}-pcm"
-    assert packager.pcm_name([WINDOWS]) == f"AntennaDesigner-{version}-windows-pcm"
+    stem = install.PRODUCT.NAME.replace(" ", "")
+    assert packager.pcm_name(EVERY) == f"{stem}-{version}-pcm"
+    assert packager.pcm_name([WINDOWS]) == f"{stem}-{version}-windows-pcm"
+    # An architecture never reaches the name, for the same reason it never
+    # reaches the metadata: PCM cannot act on one.
+    assert packager.pcm_name([LINUX_AARCH64]) == f"{stem}-{version}-linux-pcm"
 
 
-def test_the_plugin_picks_its_own_os_build_from_the_pair(tmp_path, monkeypatch):
-    # The one thing the fat package moves onto the plugin: with both builds
-    # sitting under binaries/, it has to reach for its own. hostos offers the
-    # running OS's name first and _find_exe takes the first that exists, so
-    # this pins the pair -- an ELF launched on Windows (or a PE on Linux) is
-    # an OSError at the first simulation, long after the install looked fine.
+def test_the_plugin_picks_its_own_machines_build_from_the_four(tmp_path, monkeypatch):
+    # The one thing the fat package moves onto the plugin: with every build
+    # sitting under binaries/, it has to reach for its own -- and the two Linux
+    # ones make that an architecture question, not just an OS one. Launching
+    # the wrong build is an OSError at the first simulation, long after the
+    # install looked fine.
     simulate = _load_simulate()
     payload = _staged(tmp_path, monkeypatch) / "plugins"
 
-    monkeypatch.setattr(simulate.hostos.os, "name", "nt")
-    assert simulate._find_exe(payload).name == "monopole.exe"
+    for system, machine, build in (
+        ("win32", "AMD64", WINDOWS),
+        ("linux", "x86_64", LINUX_X86_64),
+        ("linux", "aarch64", LINUX_AARCH64),
+        ("darwin", "arm64", builds.MACOS),
+    ):
+        monkeypatch.setattr(builds.sys, "platform", system)
+        monkeypatch.setattr(builds.platform, "machine", lambda m=machine: m)
+        assert simulate._find_exe(payload).name == name(build)
 
-    monkeypatch.setattr(simulate.hostos.os, "name", "posix")
-    assert simulate._find_exe(payload).name == "monopole"
 
-
-def test_the_other_os_build_still_answers_when_it_is_the_only_one(
+def test_another_machines_build_still_answers_when_it_is_the_only_one(
     tmp_path, monkeypatch
 ):
     # The narrowed package, or a checkout under WSL: only the .exe is there,
     # and on POSIX that is still a real find (the interop layer runs it), so
-    # the fallback must not be lost to the pair above.
+    # the fallback must not be lost to the choice above.
     simulate = _load_simulate()
     payload = _staged(tmp_path, monkeypatch, [WINDOWS]) / "plugins"
 
-    monkeypatch.setattr(simulate.hostos.os, "name", "posix")
-    assert simulate._find_exe(payload).name == "monopole.exe"
+    monkeypatch.setattr(builds.sys, "platform", "linux")
+    monkeypatch.setattr(builds.platform, "machine", lambda: "x86_64")
+    assert simulate._find_exe(payload).name == name(WINDOWS)
 
 
 def test_locate_finds_the_solver_from_inside_the_installed_package(
@@ -382,7 +437,7 @@ def test_locate_finds_the_solver_from_inside_the_installed_package(
     # own file, so the binary is found under whatever name the package was
     # installed as -- which for PCM is never "antenna_plugin".
     payload = _staged(tmp_path, monkeypatch) / "plugins"
-    installed = tmp_path / "3rdparty" / "plugins" / pcm.IDENTIFIER.replace(".", "_")
+    installed = tmp_path / "3rdparty" / "plugins" / pcm.PRODUCT.PCM_ID.replace(".", "_")
     installed.parent.mkdir(parents=True, exist_ok=True)
     payload.rename(installed)
 

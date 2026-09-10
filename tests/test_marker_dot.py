@@ -1,9 +1,11 @@
-"""Unit tests for the markers' board-side reshape against a minimal fake
-pcbnew footprint: the feed-point dot (the filled circle
-feed_marker._rewrite_marker keeps on the stem/triangle joint) and the
-feed-holding slide the area marker's height reshape ends in
-(area_marker.update_marker's ``hold_feed``, which moves the footprint so the
-feed point stays on the board where the user put it).
+"""Unit tests for the feed marker's board-side reshape against a minimal fake
+pcbnew footprint: the feed-point dot, the filled circle
+feed_marker._rewrite_marker keeps on the stem/triangle joint as the width
+slider resizes the marker.
+
+(The area marker's dot is written the same way, but by a repin onto a board
+group rather than by a footprint reshape -- test_area_drag.py covers that one
+against its own fake board.)
 
 Three things have to hold for the dot, and none of them show up in the pure
 geometry tests (test_feed_marker / test_area_marker):
@@ -20,18 +22,15 @@ The package is assembled by hand around the real modules because
 antenna_plugin/__init__ imports pcbnew:  python3 tests/test_marker_dot.py
 """
 
-import importlib
 import pathlib
 import sys
 import types
 
+from bare_package import load
+
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-_pkg = types.ModuleType("antenna_plugin")
-_pkg.__path__ = [str(_ROOT / "antenna_plugin")]
-sys.modules.setdefault("antenna_plugin", _pkg)
-area_marker = importlib.import_module("antenna_plugin.markers.area_marker")
-feed_marker = importlib.import_module("antenna_plugin.markers.feed_marker")
+feed_marker = load("emkit.markers.feed_marker")
 
 
 # --------------------------------------------------------------------------- #
@@ -231,80 +230,6 @@ def test_a_reshape_reuses_the_dot_and_never_frees_it():
     assert fp.removed == []
     assert after[0].layer == _USER_2  # ... moved with the rest
     assert after[0].radius_mm() > 0
-
-
-def test_the_area_markers_dot_follows_the_feed_along_the_edge():
-    fp = _legacy_marker(area_marker._local_segments(30.0, 12.0, 0.2))
-    _with_fake_pcbnew(lambda: area_marker.update_marker(fp, 30.0, 12.0, 0.2))
-    left = _dots(fp)[0].center_mm()
-    _with_fake_pcbnew(lambda: area_marker.update_marker(fp, 30.0, 12.0, 0.8))
-    right = _dots(fp)[0].center_mm()
-    assert fp.removed == []  # reused, not replaced
-    assert right[0] > left[0]  # moved along the feed edge
-    assert right[1] == left[1] == 50.0 + 6.0  # ... staying on the edge
-    # Both sit on the stem/triangle joint the segments were rewritten to.
-    joint = area_marker._local_segments(30.0, 12.0, 0.8)[8][0]
-    assert right == (100.0 + joint[0], 50.0 + joint[1])
-
-
-# --------------------------------------------------------------------------- #
-# A deeper area: the marker moves, the feed does not
-# --------------------------------------------------------------------------- #
-def _area_marker(w_mm=30.0, h_mm=12.0, frac=0.2):
-    """A placed area marker with its feed-point dot already on it (the first
-    reshape is what adds one to a marker drawn before the dot existed)."""
-    fp = _legacy_marker(area_marker._local_segments(w_mm, h_mm, frac))
-    _with_fake_pcbnew(lambda: area_marker.update_marker(fp, w_mm, h_mm, frac))
-    return fp
-
-
-def _decoded(fp):
-    pts = _with_fake_pcbnew(lambda: feed_marker._segment_points_mm(fp))
-    return area_marker._decode_segments(pts)
-
-
-def test_a_deeper_area_holds_the_feed_and_slides_the_marker():
-    """``hold_feed``: the rectangle is drawn about the marker's own origin, so
-    the marker itself is what moves -- the feed point (and its dot) stay on the
-    board where the user lined them up, and the extra depth all lands on the
-    far edge."""
-    fp = _area_marker()
-    feed = _dots(fp)[0].center_mm()
-    assert feed[1] == 50.0 + 6.0  # the feed edge of a 12 mm deep area
-    edge_y = _decoded(fp)["area"][3]
-
-    pos = _with_fake_pcbnew(
-        lambda: area_marker.update_marker(fp, 30.0, 20.0, 0.2, hold_feed=True)
-    )
-    assert pos == (100.0, 46.0)  # slid by half the 8 mm the area gained
-    assert _dots(fp)[0].center_mm() == feed  # the feed point did not move
-    d = _decoded(fp)
-    assert d["h_mm"] == 20.0 and d["w_mm"] == 30.0
-    assert d["area"][3] == edge_y  # ... the feed edge is where it was
-    assert fp.removed == []  # the footprint moved; no shape was unlinked
-
-
-def test_a_deeper_area_without_the_hold_keeps_the_marker_where_it_is():
-    """The default: the marker's position is kept and the feed edge is what
-    moves -- what every other reshape (a width, a triangle, a layer move)
-    wants, since none of them touch the feed edge."""
-    fp = _area_marker()
-    feed = _dots(fp)[0].center_mm()
-    pos = _with_fake_pcbnew(lambda: area_marker.update_marker(fp, 30.0, 20.0, 0.2))
-    assert pos == (100.0, 50.0)
-    assert _dots(fp)[0].center_mm() == (feed[0], 50.0 + 10.0)
-
-
-def test_the_hold_leaves_a_marker_with_no_feed_arrow_where_it_is():
-    """Nothing to hold -- a marker edited out of shape carries no feed arrow to
-    measure the slide from: the reshape stands, the marker stays put, and the
-    caller's own decode is what reports the breakage."""
-    fp = _area_marker()
-    before = _dots(fp)[0].center_mm()
-    rect_only = area_marker._local_segments(30.0, 12.0, 0.2)[:4]
-    held = _with_fake_pcbnew(lambda: area_marker._shift_to_held_feed(fp, rect_only))
-    assert held == (100.0, 50.0)
-    assert _dots(fp)[0].center_mm() == before
 
 
 if __name__ == "__main__":
