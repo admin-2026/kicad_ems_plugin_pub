@@ -85,6 +85,11 @@ from ..sections import (
 from .designform import DesignFormPage
 from .host import WizardHost
 
+# The Ground-layer pick's name: the form's own key inside the Area section
+# (sections/area.py), and the last part of its key in the settings file, where
+# it lives in this designer's namespace (``settings_snapshot``).
+_GROUND = "ground_layer"
+
 
 class DesignWizardPage(DesignFormPage):
     def __init__(self, parent, simulate, design):
@@ -182,18 +187,41 @@ class DesignWizardPage(DesignFormPage):
         self.scan.shutdown()
 
     # --- persisted form (emkit.settings) -----------------------------------
-    # This page's share of the per-project settings file: its scan rows alone --
-    # the sweep bounds and fixed values are hand-tuned to one board's area, so
-    # they come back on the next launch (the section namespaces its keys by
-    # design, so the designers don't collide). Everything else the page shows is
-    # either shared (the simulate page writes those keys, the model having
-    # carried them over -- the Marker-layer pick included) or read off the
-    # board.
+    # This page's share of the per-project settings file: its scan rows -- the
+    # sweep bounds and fixed values are hand-tuned to one board's area, so they
+    # come back on the next launch (the section namespaces its keys by design,
+    # so the designers don't collide) -- plus the Ground-layer pick. Everything
+    # else the page shows is either shared (the simulate page writes those keys,
+    # the model having carried them over -- the Marker-layer pick included) or
+    # read off the board.
     def settings_snapshot(self):
-        return self.scan.snapshot()
+        """The scan rows, and the Ground-layer pick for a design that has one.
+
+        That pick rides the shared form like the feed picks do, but the page
+        that *persists* the shared form is the simulate view, whose marker
+        section has no such picker -- so a key nobody claims here is dropped on
+        the way to the file and the pick comes back as the default next launch.
+        It is saved in this designer's own namespace
+        (``ScanSection.settings_key`` -- ``scan.<design>.ground_layer``, beside
+        its rows) rather than as a form-wide key: the layer a design radiates
+        against is part of that design's setup, so a second one that wanted a
+        plane could name a different layer without overwriting this."""
+        data = self.scan.snapshot()
+        ground = self.area.ground_layer_name()
+        if ground:
+            data[self.scan.settings_key(_GROUND)] = ground
+        return data
 
     def settings_restore(self, data):
+        """The rows, then the area picks -- the Ground layer among them, read
+        out of this design's namespace and handed to the section under the
+        form's own name (the section ignores it when this design has no
+        picker). The feed readouts are re-derived after, as they are after any
+        restore of that section; nothing on the board is reshaped."""
         self.scan.restore(data)
+        ground = data.get(self.scan.settings_key(_GROUND))
+        self.area.restore(dict(data, ground_layer=ground) if ground else data)
+        self.area.feed_sync_labels()
 
     @property
     def viewers(self):
@@ -211,6 +239,12 @@ class DesignWizardPage(DesignFormPage):
     @property
     def feed_section(self):
         return self.area
+
+    def ground_layer_name(self):
+        """The Ground-layer pick (copper suffix) for a design that radiates
+        against a plane, "" for one that doesn't (sections/area.py). The
+        banner asks the page, as it does for the feed layer."""
+        return self.area.ground_layer_name()
 
     @property
     def pass_knobs(self):

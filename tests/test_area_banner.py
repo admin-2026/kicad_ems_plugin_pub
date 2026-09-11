@@ -40,9 +40,10 @@ UNSAVED = simulate.Problem("board-unsaved", "block", "the board was never saved"
 class _Page:
     """Just what the banner reads off a designer page."""
 
-    def __init__(self):
+    def __init__(self, ground=""):
         self.scan = None
         self.logged = []
+        self._ground = ground
 
     def log(self, text):
         self.logged.append(text)
@@ -55,6 +56,11 @@ class _Page:
 
     def feed_layer_name(self):
         return "F.Cu"
+
+    def ground_layer_name(self):
+        """The layer a design that radiates against a plane picks in its Area
+        box; "" for the designs that don't have one."""
+        return self._ground
 
 
 @contextlib.contextmanager
@@ -101,6 +107,28 @@ def test_a_designer_says_what_would_stop_its_scan():
 def test_a_designer_with_nothing_in_the_way_shows_an_empty_banner():
     with _machine():
         assert area_banner.AreaBanner(_Page()).refresh() == []
+
+
+def test_the_ground_layer_pick_reaches_the_area_checks():
+    """The banner is where the Area box's Ground-layer pick meets the board:
+    the checks need it to tell a plane detuning a monopole from the plane a
+    patch cannot work without (markers.area_checks, checks 5 and 6), and the
+    banner is the only thing that knows both."""
+    asked = []
+    kept = area_banner.area_checks.area_problems
+    area_banner.area_checks.area_problems = lambda *args: asked.append(args) or []
+    try:
+        with _machine():
+            area_banner.AreaBanner(_Page(ground="B.Cu")).refresh()
+            # (board, feed layer, ground layer), on every call the refresh made.
+            assert asked and {args[1:] for args in asked} == {("F.Cu", "B.Cu")}
+            asked.clear()
+            # A designer with no plane says so rather than leaving the checks
+            # to guess at one.
+            area_banner.AreaBanner(_Page()).refresh()
+            assert asked and {args[1:] for args in asked} == {("F.Cu", "")}
+    finally:
+        area_banner.area_checks.area_problems = kept
 
 
 if __name__ == "__main__":

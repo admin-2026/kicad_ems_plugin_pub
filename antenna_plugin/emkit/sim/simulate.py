@@ -922,7 +922,15 @@ def _spawn(cmd, **popen_kwargs):
     )
 
 
-def run_exe(solver_exe, yaml_path, grid_only, on_line=None, on_proc=None, control=None):
+def run_exe(
+    solver_exe,
+    yaml_path,
+    grid_only,
+    on_line=None,
+    on_proc=None,
+    control=None,
+    mount=None,
+):
     """Run the FDTD binary, streaming stdout lines to ``on_line`` as they
     arrive. ``on_proc`` (if given) receives the Popen right after launch, so
     the caller can hold a handle for cancelling; ``control`` (if given) is
@@ -942,11 +950,17 @@ def run_exe(solver_exe, yaml_path, grid_only, on_line=None, on_proc=None, contro
     ``sim.launch.Launcher`` -- which is how a run happens inside a container
     without this function growing a branch. What the command line *is* belongs
     to that module; what this one does is stream it and check how it ended.
+
+    ``mount`` is for the caller whose config reaches outside its own folder
+    (the designer's scan, whose candidates share one set of gerbers): the
+    directory all of it lives under, so a containerised run can see the lot.
     """
     from . import launch
 
     launcher = launch.of(solver_exe)
-    cmd, cwd, name = launcher.command(yaml_path, grid_only=grid_only, control=control)
+    cmd, cwd, name = launcher.command(
+        yaml_path, grid_only=grid_only, control=control, mount=mount
+    )
     proc = _spawn(
         cmd,
         stdout=subprocess.PIPE,

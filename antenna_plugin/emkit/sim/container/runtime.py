@@ -87,27 +87,36 @@ def solve_argv(
     arch,
     yaml_path,
     args=(),
+    mount_dir=None,
     name=None,
     system=None,
     engine="docker",
 ):
     """The whole command line for one solve of *yaml_path*.
 
-    The run directory is the yaml's own folder -- which is what the native
-    launcher uses as its cwd, for the same reason: every path the config names
-    is written relative to it, so the config resolves identically whether it is
+    The solver's cwd is the yaml's own folder -- which is what the native
+    launcher uses too, for the same reason: every path the config names is
+    written relative to it, so the config resolves identically whether it is
     read from ``/work`` or from the folder itself. Nothing in the config is
     rewritten for the container, and that is by design rather than by luck.
+
+    What is *mounted* is that folder, unless the caller names a directory above
+    it in ``mount_dir``: a config may legitimately reach outside its own folder
+    -- the designer's scan plots one set of gerbers and writes a config per
+    candidate beside them, so every candidate names ``../gerbers/...`` -- and a
+    path above the mount is a file the container cannot open.
     """
     run_dir = os.path.dirname(os.path.abspath(str(yaml_path)))
+    mount_dir = os.path.abspath(str(mount_dir)) if mount_dir else run_dir
     exe = solver_path(arch, stem)
     if exe is None:
         return None
     return cmd.run_argv(
         tag,
         exe,
-        args=[cmd.inside(yaml_path, run_dir, cmd.WORK_DIR), *args],
-        work_dir=run_dir,
+        args=[cmd.inside(yaml_path, mount_dir, cmd.WORK_DIR), *args],
+        work_dir=mount_dir,
+        cwd=cmd.inside(run_dir, mount_dir, cmd.WORK_DIR),
         solver_dir=binaries_dir(),
         name=name,
         user=None if is_desktop(system) else user_argument(),

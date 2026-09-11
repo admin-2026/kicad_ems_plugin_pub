@@ -16,9 +16,15 @@ layer pick names (also the layer the scan splices candidates into), so the
 swept shape is visible on the board before anything is simulated. It is drawn
 as its own footprint beside the area marker (markers/preview.py) rather than
 inside it, so the sketch and the area it was solved in are two items the user
-selects and deletes separately. The preview is real copper, so the scan strips
-it before plotting gerbers (and redraws it after), and placing the final
-footprint clears it.
+selects and deletes separately. A design that radiates against a ground plane
+(``needs_ground_plane`` — the patch) sketches that plane with it, as the area's
+own rectangle on the Ground layer picked in section 1: an antenna that is half
+plane is previewed as both halves, and the rectangle drawn is the one a pass
+splices onto that layer (wizard_scan.ground_polys), so the preview and the
+simulation are the same antenna. The preview is real copper, so the scan strips
+it before plotting gerbers (and redraws it after) — what is simulated is the
+spliced plane merged with the user's own pour, never the sketch — and placing
+the final footprint clears it.
 
 A row's label *is* the picture of its own knob (``Param.icon``, drawn by
 tools/icons/designs/): the design's antenna with the ends of *that* parameter's
@@ -517,7 +523,11 @@ class ScanSection(SolverSection):
     # The sweep is worth keeping across launches: the bounds and fixed values
     # are hand-tuned to one board's area. Keys are namespaced by design -- every
     # designer page has its own rows and they all share one settings file.
-    def _key(self, *parts):
+    def settings_key(self, *parts):
+        """This design's namespace in the settings file. Public because it is
+        this designer's namespace rather than this section's: the page saves
+        the Area box's Ground-layer pick in here too (pages/wizard.py), that
+        being a setting of the design and not of the board's form."""
         return ".".join(("scan", self.design.key) + parts)
 
     def snapshot(self):
@@ -529,16 +539,16 @@ class ScanSection(SolverSection):
         blank fixed value, a swept row whose range isn't usable yet) has no
         value to save, and stores a blank."""
         data = {
-            self._key("param"): self._swept_param(),
-            self._key("count"): str(self.count.GetValue()),
+            self.settings_key("param"): self._swept_param(),
+            self.settings_key("count"): str(self.count.GetValue()),
         }
         for param in self.design.params:
-            data[self._key(param.key, "min")] = self._lo[param.key].GetValue()
-            data[self._key(param.key, "max")] = self._hi[param.key].GetValue()
+            data[self.settings_key(param.key, "min")] = self._lo[param.key].GetValue()
+            data[self.settings_key(param.key, "max")] = self._hi[param.key].GetValue()
             try:
-                data[self._key(param.key)] = f"{self._value(param.key):g}"
+                data[self.settings_key(param.key)] = f"{self._value(param.key):g}"
             except RuntimeError:
-                data[self._key(param.key)] = ""
+                data[self.settings_key(param.key)] = ""
         return data
 
     def restore(self, data):
@@ -549,17 +559,17 @@ class ScanSection(SolverSection):
         for param in self.design.params:
             key = param.key
             for box, part in ((self._lo[key], "min"), (self._hi[key], "max")):
-                if self._key(key, part) in data:
-                    box.ChangeValue(data[self._key(key, part)])
-            value = to_float(data.get(self._key(key), ""), None)
+                if self.settings_key(key, part) in data:
+                    box.ChangeValue(data[self.settings_key(key, part)])
+            value = to_float(data.get(self.settings_key(key), ""), None)
             if value is not None:
                 self._restored[key] = value  # survives the frequency seeding
                 self._set_value(key, value)
-        swept = data.get(self._key("param"))
+        swept = data.get(self.settings_key("param"))
         if swept in self._radio:
             self._radio[self._swept_param()].SetValue(False)
             self._radio[swept].SetValue(True)
-        count = to_float(data.get(self._key("count"), ""), None)
+        count = to_float(data.get(self.settings_key("count"), ""), None)
         if count is not None:
             self.count.SetValue(int(min(max(count, COUNT_RANGE[0]), COUNT_RANGE[1])))
         self._on_scan_param()  # grey the fixed rows, retitle the note
@@ -587,16 +597,37 @@ class ScanSection(SolverSection):
         drawn on and the scan splices candidates into."""
         return self.page.host.feed_layer_name() or "F_Cu"
 
-    def _feed_layer_id(self, board):
-        """The pcbnew layer id of the Feed layer pick, validated against the
-        board's enabled copper layers."""
+    def _copper_layer_id(self, board, name):
+        """The pcbnew layer id of copper layer ``name``, or None when the board
+        has no such layer enabled."""
         from ...emkit.sim import simulate
 
-        name = self._feed_layer_name()
         for suffix, layer_id in simulate.copper_layers(board):
             if suffix == name:
                 return layer_id
-        raise RuntimeError(f"copper layer {name} is not enabled on this board")
+        return None
+
+    def _feed_layer_id(self, board):
+        """The pcbnew layer id of the Feed layer pick, validated against the
+        board's enabled copper layers."""
+        name = self._feed_layer_name()
+        layer_id = self._copper_layer_id(board, name)
+        if layer_id is None:
+            raise RuntimeError(f"copper layer {name} is not enabled on this board")
+        return layer_id
+
+    def _ground_plane_polys(self, spec):
+        """The plane sketch that belongs with the candidate: the very polygons
+        a pass splices onto the ground layer (wizard_scan.ground_polys), so the
+        preview shows the antenna's other half exactly as it is simulated.
+        Empty for a design that radiates against no plane.
+
+        The sketch is cleared before a pass plots gerbers — what reaches the
+        solver is the spliced plane merged with whatever the user poured
+        there, never this drawing."""
+        from ...design import wizard_scan
+
+        return wizard_scan.ground_polys(self.design, spec)
 
     def _target_freq(self):
         """The target frequency (GHz) every candidate is sized and scored for,
@@ -713,8 +744,8 @@ class ScanSection(SolverSection):
 
     def _draw_preview(self):
         """Draw the candidate at the current sliders (_candidate) onto the
-        board as the preview footprint (markers/preview.py), stroked at the
-        track width: on the picked copper layer while it fits the area, and on
+        board as the preview footprint (markers/preview.py), as the copper the
+        design draws: on the picked copper layer while it fits the area, and on
         the marker's own User layer while it doesn't — the antenna spilling out
         of the rectangle, in the marker's colour, rather than nothing at all.
         Returns ``(status text, fits)``; raises with guidance when the marker
@@ -736,19 +767,33 @@ class ScanSection(SolverSection):
             layer, layer_id = area_marker.marker_layer(marker)
         rot = spec.get("rot_deg") or 0.0
         pivot = spec.get("pivot") or (0, 0)
-        preview.draw(board, geo.centerline_segments(rot, pivot), layer_id, trace_w)
+        groups = [(layer_id, geo.preview_polys(trace_w, rot, pivot))]
+        # The other half of an antenna that radiates against a plane: it is
+        # sketched whether or not the candidate fits, since a patch hanging out
+        # of the area still needs the pour under the area it does cover.
+        plane = self._ground_plane_polys(spec)
+        plane_layer = self.page.ground_layer_name() if plane else ""
+        plane_id = self._copper_layer_id(board, plane_layer) if plane else None
+        if plane_id is not None:
+            groups.append((plane_id, plane))
+        preview.draw(board, groups)
         pcbnew.Refresh()
         self._preview_on = True
         shape = (
             f"{geo.total_mm:g} mm ({self.design.describe(geo)}), width {trace_w:g} mm"
         )
+        plane_note = (
+            f" The ground plane it needs is sketched on {plane_layer}."
+            if plane_id is not None
+            else ""
+        )
         if state.ok:
-            return f"Preview: {shape} — drawn on {layer}.", True
+            return f"Preview: {shape} — drawn on {layer}.{plane_note}", True
         # Not copper: it doesn't fit, so it is drawn on the marker instead,
         # hanging out of the rectangle by however much is missing.
         return (
             f"Doesn't fit the area — {shape} drawn on {layer} (the marker "
-            f"layer), not on copper: {state.detail}.",
+            f"layer), not on copper: {state.detail}.{plane_note}",
             False,
         )
 
@@ -1112,6 +1157,10 @@ class ScanSection(SolverSection):
                 # The main dialog's Feed layer pick: the copper the candidates
                 # are spliced into (and the preview is drawn on).
                 "feed_layer": self._feed_layer_name(),
+                # The Area box's Ground layer pick: the copper the plane is
+                # spliced onto for a design that radiates against one. "" for
+                # the designs that don't, which splice no plane.
+                "ground_layer": self.page.ground_layer_name(),
             }
         )
         spec.update(self._target_fields())

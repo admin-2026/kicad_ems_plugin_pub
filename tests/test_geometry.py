@@ -602,6 +602,43 @@ def test_copper_rects_cover_every_path():
     assert rects[1][3] == 1.25  # feed stub, + half the gap
 
 
+def test_a_path_that_states_its_own_width_is_drawn_at_it():
+    """What lets one candidate be a millimetre of microstrip and a rectangle
+    thirty across (design/patch.py): the design's track width is the default,
+    never an override."""
+    geo = geometry.Geometry(
+        paths=(
+            geometry.Path(((0.0, 0.0), (0.0, -3.0)), geometry.FEED_STUB),
+            geometry.Path(((0.0, -3.0), (0.0, -9.0)), geometry.NO_STUB, 30.0),
+        ),
+        feed=(0.0, 0.0),
+        inward=(0, -1),
+        total_mm=9.0,
+        metrics={},
+    )
+    track, body = geo.copper_rects(1.0, 0.5)
+    assert track == (-0.5, -3.0, 0.5, 1.25)  # the design's width, + the stub
+    assert body == (-15.0, -9.0, 15.0, -3.0)  # its own, and it meets the track
+    # The width travels with the path, so a wider track leaves the body alone.
+    assert geo.copper_rects(2.0, 0.5)[1] == body
+
+
+def test_preview_polys_are_the_copper_on_the_board():
+    """The preview draws the candidate's own copper rather than a stroked
+    centerline (markers.preview.draw), so per-path widths reach the board --
+    stubs off, since a sketch of the port's reach into the pour is not
+    something anybody fabricates."""
+    geo = _geo()
+    (poly,) = geo.preview_polys(1.0)
+    assert poly == [(19.5, 33.0), (20.5, 33.0), (20.5, 38.0), (19.5, 38.0)]
+    # ... and rotated onto the board, exactly as the copper rects are.
+    turned = geo.preview_polys(1.0, 90.0, (20.0, 38.0))
+    want = geometry.candidate_polys(
+        geo.copper_rects(1.0, 0.0, include_stub=False), 90.0, (20.0, 38.0)
+    )
+    assert turned == want
+
+
 def test_centerline_segments_follow_the_points():
     geo = geometry.Geometry(
         paths=(geometry.Path(((0.0, 0.0), (0.0, -4.0), (5.0, -4.0))),),

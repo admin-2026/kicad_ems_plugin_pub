@@ -674,6 +674,75 @@ def test_stacked_copper_names_the_other_layer():
     assert "B_Cu" in problems[0].message
 
 
+def test_stacked_copper_forgives_a_pour_at_the_area_edge():
+    # A pour whose edge merely touches the marker (or slips a grid-snap hair
+    # inside it) is the area drawn against the ground pour, not a plane behind
+    # the monopole body -- same slack the overlap check uses, feed edge wider.
+    for pour in (
+        _FakeShape(layer=31, x0=-10, y0=-10, x1=0, y1=20),  # flush, left edge
+        _FakeShape(layer=31, x0=-10, y0=-10, x1=30, y1=ac.EDGE_SLACK_MM / 2),  # top
+        _FakeShape(  # under the feed edge, within the connection band
+            layer=31, x0=-10, y0=10.0 - ac.FEED_EDGE_SLACK_MM / 2, x1=30, y1=20
+        ),
+    ):
+        ctx = ac.CheckContext(_FakeBoard([pour]), _FRAME, "F_Cu", 0)
+        assert _with_fake_pcbnew(lambda: ac._stacked_copper_problems(ctx)) == [], pour
+    # A pour reaching measurably deeper is still the warning's case.
+    deep = _FakeShape(layer=31, x0=-10, y0=-10, x1=30, y1=5.0)
+    ctx = ac.CheckContext(_FakeBoard([deep]), _FRAME, "F_Cu", 0)
+    assert _with_fake_pcbnew(lambda: ac._stacked_copper_problems(ctx))
+
+
+# --------------------------------------------------------------------------- #
+# The reference plane (what it does to checks 4 and 5 -- its absence is not
+# checked: see dev_docs/area-checks.md, check 6)
+# --------------------------------------------------------------------------- #
+_GROUND = ("B_Cu", 31)
+_PLANE = _FakeShape(layer=31, x0=-5, y0=-5, x1=25, y1=15)  # a pour under it all
+
+
+def test_the_plane_a_design_radiates_against_is_not_stacked_copper():
+    # The same B_Cu pour, read twice: a warning for the designs that radiate
+    # against the pour beside them, and nothing at all for the one that
+    # radiates against it.
+    board = _FakeBoard([_PLANE])
+    without = ac.CheckContext(board, _FRAME, "F_Cu", 0)
+    assert [
+        p.id for p in _with_fake_pcbnew(lambda: ac._stacked_copper_problems(without))
+    ] == ["area-stacked-copper"]
+    with_plane = ac.CheckContext(board, _FRAME, "F_Cu", 0, ground=_GROUND)
+    assert _with_fake_pcbnew(lambda: ac._stacked_copper_problems(with_plane)) == []
+
+
+def test_a_missing_plane_is_nobody_s_warning():
+    # The design flow puts the plane there, so a board with none is not worth
+    # a word from the checks -- whatever they say, it is not about that.
+    board = _FakeBoard([])  # no copper anywhere
+    ctx = ac.CheckContext(board, _FRAME, "F_Cu", 0, ground=_GROUND)
+    assert _with_fake_pcbnew(lambda: [p for c in ac.CHECKS for p in c(ctx)]) == []
+
+
+def test_copper_on_another_layer_is_not_the_plane():
+    # The pick names one layer, so a pour on some *other* inner layer does not
+    # stop being check 5's business.
+    board = _FakeBoard([_FakeShape(layer=0, x0=-5, y0=-5, x1=25, y1=15)])
+    ctx = ac.CheckContext(board, _FRAME, "F_Cu", 1, ground=_GROUND)
+    ids = _with_fake_pcbnew(lambda: [p.id for c in ac.CHECKS for p in c(ctx)])
+    assert "area-stacked-copper" in ids
+
+
+def test_a_design_with_a_plane_does_not_ask_for_a_pour_beside_its_feed():
+    # A patch is fed by a microstrip line referenced to the plane under the
+    # board; a pour crowding that line in-plane is not what it wants, so the
+    # open-feed-edge half of check 4 is not asked. The shielding half still is.
+    open_ctx = ac.CheckContext(_FakeBoard([]), _FRAME, "F_Cu", 0, ground=_GROUND)
+    assert _with_fake_pcbnew(lambda: ac._feed_axis_problems(open_ctx)) == []
+    backed = _FakeShape(layer=0, x0=-5, y0=-4, x1=25, y1=-0.2)  # over the far edge
+    shielded = ac.CheckContext(_FakeBoard([backed]), _FRAME, "F_Cu", 0, ground=_GROUND)
+    ids = [p.id for p in _with_fake_pcbnew(lambda: ac._feed_axis_problems(shielded))]
+    assert ids == ["area-radiating-shielded"]
+
+
 def test_the_context_walks_each_layer_once():
     # local_shapes caches per layer, so however many checks probe a layer the
     # board is walked once -- the cost bound the registry design leans on.

@@ -32,7 +32,9 @@ def _area(design, f0=F0):
 
 
 def _default_geo(design, f0=F0):
-    return design.solve(_area(design, f0), "bottom", 0.3, design.default_values(f0))
+    return design.solve(
+        _area(design, f0), "bottom", design.feed_frac, design.default_values(f0)
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -242,7 +244,7 @@ def test_the_area_hint_holds_at_least_a_quarter_wave():
     the first scan meaningless."""
     for design in registry.DESIGNS:
         cap = design.capacity_mm(
-            _area(design), "bottom", 0.3, design.default_values(F0)
+            _area(design), "bottom", design.feed_frac, design.default_values(F0)
         )
         assert cap >= sizing.quarter_wave_mm(F0), design.key
 
@@ -254,12 +256,13 @@ def test_capacity_is_solvable_and_is_a_real_ceiling():
     for design in registry.DESIGNS:
         area = _area(design)
         values = dict(design.default_values(F0))
-        cap = design.capacity_mm(area, "bottom", 0.3, values)
+        frac = design.feed_frac
+        cap = design.capacity_mm(area, "bottom", frac, values)
         values[design.LENGTH_KEY] = cap
-        design.solve(area, "bottom", 0.3, values)  # exactly fits
+        design.solve(area, "bottom", frac, values)  # exactly fits
         values[design.LENGTH_KEY] = cap * 1.5
         try:
-            design.solve(area, "bottom", 0.3, values)
+            design.solve(area, "bottom", frac, values)
             assert False, f"{design.key}: solved past its capacity"
         except ValueError:
             pass
@@ -281,7 +284,7 @@ def test_solving_from_every_edge_puts_the_feed_on_it():
             ("left", 0, x0, (1, 0)),
             ("right", 0, x1, (-1, 0)),
         ):
-            geo = design.solve(area, edge, 0.3, values)
+            geo = design.solve(area, edge, design.feed_frac, values)
             assert geo.inward == inward, (design.key, edge)
             assert math.isclose(geo.feed[axis], want), (design.key, edge)
 
@@ -343,7 +346,7 @@ def test_footprint_radiator_is_one_blob_touching_the_anchor():
         for trace_w in (0.4, 1.0, 1.6):
             values = dict(design.default_values(F0))
             values[design.WIDTH_KEY] = trace_w
-            geo = design.solve(_area(design), "bottom", 0.3, values)
+            geo = design.solve(_area(design), "bottom", design.feed_frac, values)
             fx, fy = geo.feed
             h = trace_w / 2.0
             anchor = (fx - h, fy - h, fx + h, fy + h)
@@ -377,7 +380,7 @@ def test_footprint_pads_are_exactly_the_track_width():
         for trace_w in (0.4, 1.0, 1.6):
             values = dict(design.default_values(F0))
             values[design.WIDTH_KEY] = trace_w
-            geo = design.solve(_area(design), "bottom", 0.3, values)
+            geo = design.solve(_area(design), "bottom", design.feed_frac, values)
             text = footprints.sexpr(design, geo, values, F0)
             # Pad lines only: the font sizes are "(size 1 1)" too.
             sizes = [

@@ -81,7 +81,7 @@ FEED_NAME = "AntennaAreaFeed"
 # Nothing is drawn for it: the words are already on the canvas, in KiCad's own
 # label, and a text item of the plugin's own would be one more thing on the
 # user's board to select, move and delete.
-HINT_TEXT = "double-click to edit the marker"
+HINT_TEXT = "double-click to drag the area rectangle or move the feed arrow"
 GROUP_NAME = f"{MARKER_NAME}: {HINT_TEXT}"
 
 LINE_STROKE_MM = 0.15  # stroke width of the marker's rectangle and arrow

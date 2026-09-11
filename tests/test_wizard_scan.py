@@ -163,19 +163,49 @@ _SPEC_IFA = dict(_SPEC, design="ifa", values={"width": 1.0, "height": 4.0, "tap"
 # legs cross the area's width and it advances into the depth).
 _SPEC_MEANDER = dict(_SPEC, design="meander", values={"width": 1.0, "turn": 3.0})
 
+# The patch is the one design that radiates against a plane, so its pass has a
+# second splice: the area rectangle onto the Ground layer pick. A deeper area,
+# since a patch is a sheet, and an explicit width sweep so the candidates are
+# the two this spec names.
+_SPEC_PATCH = dict(
+    _SPEC,
+    design="patch",
+    area=(0.0, 0.0, 60.0, 45.0),
+    values={
+        "length": 24.0,
+        "width": 1.5,
+        "patch_w": 30.0,
+        "inset": 7.0,
+        "feed_len": 2.0,
+        "inset_gap": 1.5,
+    },
+    scan_param="patch_w",
+    sweep_lo=26.0,
+    sweep_hi=34.0,
+    n=2,
+    ground_layer="B_Cu",
+)
+
 
 def _setup(td):
     td = pathlib.Path(td)
     exe = td / "stub_solver.py"
     exe.write_text(_STUB, encoding="utf-8")
     exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
-    (td / "F_Cu.gbr").write_text(_GERBER, encoding="utf-8")
-    (td / "B_Cu.gbr").write_text(_GERBER, encoding="utf-8")
-    (td / "edge.gbr").write_text("M02*\n", encoding="utf-8")
+    # The plot's own folder, as the wizard makes it (work/gerbers): the scan
+    # writes its spliced plane in there beside the layers it came from.
+    plot = td / "gerbers"
+    plot.mkdir()
+    (plot / "F_Cu.gbr").write_text(_GERBER, encoding="utf-8")
+    (plot / "B_Cu.gbr").write_text(_GERBER, encoding="utf-8")
+    (plot / "edge.gbr").write_text("M02*\n", encoding="utf-8")
     gerbers = {
-        "edge": str(td / "edge.gbr"),
-        "copper": [("F_Cu", str(td / "F_Cu.gbr")), ("B_Cu", str(td / "B_Cu.gbr"))],
-        "markers": [str(td / "stray_marker.gbr")],
+        "edge": str(plot / "edge.gbr"),
+        "copper": [
+            ("F_Cu", str(plot / "F_Cu.gbr")),
+            ("B_Cu", str(plot / "B_Cu.gbr")),
+        ],
+        "markers": [str(plot / "stray_marker.gbr")],
     }
     return str(exe), gerbers
 
@@ -250,7 +280,9 @@ def test_scan_runs_ladder_plus_refine_and_ranks():
             # (paths are written relative to the yaml's own folder).
             assert "antenna_copper.gbr" in yaml
             assert (
-                os.path.relpath(pathlib.Path(td) / "B_Cu.gbr", out).replace(os.sep, "/")
+                os.path.relpath(pathlib.Path(td) / "gerbers" / "B_Cu.gbr", out).replace(
+                    os.sep, "/"
+                )
                 in yaml
             )
 
@@ -431,6 +463,69 @@ def test_meander_scan_runs_the_same_driver():
             encoding="utf-8"
         )
         assert "Meandered monopole" in report
+
+
+def test_a_patch_scan_splices_the_plane_it_radiates_against():
+    # The other half of a patch: the area rectangle, spliced onto the Ground
+    # layer pick so every candidate is simulated over the plane it needs --
+    # once for the sweep, since that rectangle is the same for all of them.
+    with tempfile.TemporaryDirectory() as td:
+        exe, gerbers = _setup(td)
+        work = pathlib.Path(td) / "wizard"
+        results = wizard_scan.run_scan(
+            exe, gerbers, _STACK, _BASE, _SPEC_PATCH, str(work)
+        )
+        assert len(results) == _SPEC_PATCH["n"]
+        assert all(r["error"] is None for r in results)
+
+        # In the plot's folder, not the scan's: it is one more gerber of the
+        # same plot, and the same file for every candidate.
+        plane = pathlib.Path(td) / "gerbers" / "ground_plane.gbr"
+        text = plane.read_text(encoding="utf-8")
+        assert "patch ground plane" in text
+        # The area rectangle as one dark region, in the gerber's 4.6 mm ints
+        # with Y negated -- and the board's own copper still under it, since a
+        # splice adds to the plotted layer instead of replacing it.
+        assert "G36*" in text and "X60000000Y-45000000D01*" in text
+        assert "X40000000Y0D01*" in text  # the stub gerber's own trace
+
+        for r in results:
+            out = pathlib.Path(r["outdir"])
+            yaml = (out / "pcb.yaml").read_text(encoding="utf-8")
+            # Two splices, one per layer (the config writes each gerber's path
+            # relative to the YAML): the plane the whole sweep shares, in the
+            # plot folder, and this candidate's own antenna on the feed layer.
+            assert "path: ../../gerbers/ground_plane.gbr" in yaml
+            assert "path: antenna_copper.gbr" in yaml
+
+
+def test_a_design_that_needs_no_plane_leaves_the_other_layers_alone():
+    with tempfile.TemporaryDirectory() as td:
+        exe, gerbers = _setup(td)
+        work = pathlib.Path(td) / "wizard"
+        results = wizard_scan.run_scan(exe, gerbers, _STACK, _BASE, _SPEC, str(work))
+        assert not (pathlib.Path(td) / "gerbers" / "ground_plane.gbr").exists()
+        yaml = (pathlib.Path(results[0]["outdir"]) / "pcb.yaml").read_text(
+            encoding="utf-8"
+        )
+        # the plotted layer, untouched
+        assert "path: ../../gerbers/B_Cu.gbr" in yaml
+
+
+def test_a_patch_with_no_ground_layer_picked_is_refused_before_the_first_run():
+    # No silent default: the layer the plane goes on is an input, and a spec
+    # without one stops the pass instead of simulating half an antenna.
+    with tempfile.TemporaryDirectory() as td:
+        exe, gerbers = _setup(td)
+        spec = dict(_SPEC_PATCH, ground_layer="")
+        try:
+            wizard_scan.run_scan(
+                exe, gerbers, _STACK, _BASE, spec, os.path.join(td, "wizard")
+            )
+        except RuntimeError as exc:
+            assert "ground layer" in str(exc)
+        else:
+            raise AssertionError("a patch scan with no ground layer should raise")
 
 
 def test_ifa_tap_scan_sweeps_the_match():

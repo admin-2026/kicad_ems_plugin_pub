@@ -37,7 +37,7 @@ def _spec(design):
         "design": design,
         "area": (0.0, 0.0, w, h),
         "edge": "bottom",
-        "frac": 0.3,
+        "frac": design.feed_frac,
         "rot_deg": 0.0,
         "pivot": (0.0, 0.0),
         "gap_mm": 0.5,

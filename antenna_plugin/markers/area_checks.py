@@ -37,11 +37,20 @@ only metal the antenna itself would land on is worth a warning there.
         edge, so the two sides have opposite requirements. Warn when the strip
         just outside the feed edge has *no* ground copper (nothing to reference)
         or the strip outside the opposite edge *is* backed by copper (the
-        radiator is shielded). Both read the feed-layer copper in-plane.
+        radiator is shielded). Both read the feed-layer copper in-plane. A
+        design with a reference plane skips the first half: its feed line
+        references the plane under the board, not a pour beside it.
 
     Check 5 -- stacked copper. The antenna sits on the feed layer; copper on the
         *other* copper layers directly over/under the area (a ground plane
-        behind the monopole body) detunes or kills it. Warn, naming the layers.
+        behind the monopole body) detunes or kills it. Warn, naming the layers
+        -- on the same inset rectangle the overlap check judges
+        (``_judged_area``), so a pour merely touching the area edge is not one.
+        Not the layer a patch-like design radiates *against*, which is copper
+        stacked over the area on purpose. Whether that layer really carries a
+        plane is *not* checked: the scan splices one on itself
+        (design.wizard_scan), so a board with no pour there is not a problem to
+        report -- see dev_docs/area-checks.md, check 6.
 
 Frames: the decoded area rectangle is axis-aligned in the marker's *derotated*
 frame (area_marker returns ``area`` there, with ``rot_deg``/``pivot`` mapping it
@@ -415,14 +424,25 @@ class CheckContext:
     same frame (geometry.Geometry.copper_rects, stubs off), or None -- the
     overlap check then stays quiet. ``local_shapes`` reads one layer's board
     copper mapped into the frame, walked once per layer and cached, so however
-    many checks probe a layer the board is walked once."""
+    many checks probe a layer the board is walked once.
 
-    def __init__(self, board, frame, feed_layer, feed_id, antenna_rects=None):
+    ``ground`` is the ``(suffix, layer_id)`` of the layer the design radiates
+    *against* (design.base.AntennaDesign.needs_ground_plane, picked in the
+    Area box), or None for the designs that reference the pour they reach
+    through the feed edge. It is what checks 4 and 5 read to tell which
+    antenna they are looking at: the same copper under the same area is a
+    plane detuning a monopole and the reference a patch cannot work without.
+    """
+
+    def __init__(
+        self, board, frame, feed_layer, feed_id, antenna_rects=None, ground=None
+    ):
         self.board = board
         self.frame = frame
         self.feed_layer = feed_layer  # copper suffix, e.g. "F_Cu"
         self.feed_id = feed_id  # its pcbnew layer id
         self.antenna_rects = antenna_rects
+        self.ground = ground  # (suffix, layer_id) of the reference plane
         self._shapes = {}  # layer_id -> shapes, derotated frame
 
     @property
@@ -456,7 +476,7 @@ class CheckContext:
         return self._shapes[layer_id]
 
 
-def area_problems(board, feed_layer_name):
+def area_problems(board, feed_layer_name, ground_layer_name=""):
     """Every advisory area-marker warning that reads the board alone, for
     ``board`` with the antenna on ``feed_layer_name`` (a copper-layer suffix,
     e.g. ``F_Cu``): the CHECKS run against the single decoded area marker.
@@ -464,14 +484,22 @@ def area_problems(board, feed_layer_name):
     committed to (``antenna_problems``). Returns a list of
     ``sim.simulate.Problem`` (all ``severity="warn"``), empty when there isn't
     exactly one decodable area marker (that case is reported elsewhere) or the
-    feed layer isn't a copper layer on this board. Read-only."""
+    feed layer isn't a copper layer on this board. Read-only.
+
+    ``ground_layer_name`` is the layer a patch-like design radiates against
+    (blank for the designs that don't have one, which is what the wizard's
+    Ground-layer picker answers for them). A layer that isn't enabled copper
+    on this board is treated as no plane at all rather than as a plane on a
+    layer nobody can see: the pick came off a stackup the board no longer
+    has."""
     marker = _one_marker(board)
     if marker is None:
         return []
     resolved = _resolve_layer(board, feed_layer_name)
     if resolved is None:
         return []
-    ctx = CheckContext(board, marker, *resolved)
+    ground = _resolve_layer(board, ground_layer_name) if ground_layer_name else None
+    ctx = CheckContext(board, marker, *resolved, ground=ground)
     return [p for check in CHECKS for p in check(ctx)]
 
 
@@ -557,14 +585,20 @@ def _where(frame, rect):
 def _feed_axis_problems(ctx):
     """Check 4: the feed edge should back onto ground, the opposite (radiating)
     edge should be open. Both read the feed-layer copper just outside the two
-    edges, in the marker's derotated frame."""
+    edges, in the marker's derotated frame.
+
+    The first half is skipped for a design with a reference plane: a patch is
+    fed by a microstrip line whose return is the plane *under* the board, and
+    a pour crowding the line in-plane is the layout going wrong rather than
+    right. The second half stands whatever the antenna is -- copper across the
+    radiating edge shields a patch as surely as it shields a monopole."""
     edge = ctx.frame["edge"]
     source = _outward_band(ctx.area, edge, PROBE_MM)
     radiating = _outward_band(ctx.area, _OPPOSITE[edge], PROBE_MM)
     shapes = ctx.local_shapes(ctx.feed_id)
 
     problems = []
-    if not _any_hit(shapes, [source]):
+    if ctx.ground is None and not _any_hit(shapes, [source]):
         problems.append(
             Problem(
                 "area-feed-open",
@@ -591,11 +625,24 @@ def _feed_axis_problems(ctx):
 
 def _stacked_copper_problems(ctx):
     """Check 5: copper on the other copper layers over/under the area (a ground
-    plane behind the monopole body) detunes it. One warning naming the layers."""
+    plane behind the monopole body) detunes it. One warning naming the layers.
+
+    Every layer but the antenna's own -- and but the reference plane, for a
+    design that has one: the plane a patch radiates against is copper stacked
+    over the area on purpose.
+
+    Judged on the inset area (``_judged_area``), not the bare rectangle, for
+    the same reason the overlap check is: the area is routinely drawn flush
+    against the ground pour and hanging a little over it at the feed edge, so
+    a pour edge touching the marker -- or a hair inside it -- is that layout
+    working, not a plane behind the monopole body. What this check is about
+    reaches far deeper than the insets."""
+    skip = {ctx.feed_id} | ({ctx.ground[1]} if ctx.ground else set())
+    judged = [_judged_area(ctx.area, ctx.frame["edge"])]
     hit = [
         suffix
         for suffix, layer_id in ctx.copper_layers()
-        if layer_id != ctx.feed_id and _any_hit(ctx.local_shapes(layer_id), [ctx.area])
+        if layer_id not in skip and _any_hit(ctx.local_shapes(layer_id), judged)
     ]
     if not hit:
         return []

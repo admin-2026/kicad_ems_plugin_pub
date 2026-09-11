@@ -19,7 +19,7 @@ fit = load("design.fit")
 registry = load("design.registry")
 
 F0 = 2.45
-EDGE, FRAC = "bottom", 0.3
+EDGE = "bottom"
 
 
 def _area(design, scale=1.0):
@@ -30,7 +30,10 @@ def _area(design, scale=1.0):
 
 
 def _check(design, values, scale=1.0):
-    return fit.check(design, _area(design, scale), EDGE, FRAC, values)
+    """The design at ``values`` in its own starter area, fed where a fresh
+    marker's arrow lands (``feed_frac``: off to one side for the wire designs,
+    the middle for the patch, which is centred on its feed)."""
+    return fit.check(design, _area(design, scale), EDGE, design.feed_frac, values)
 
 
 def _too_long(design):
@@ -75,8 +78,8 @@ def test_the_detail_quotes_the_length_the_area_does_hold():
     for design in registry.DESIGNS:
         values = _too_long(design)
         area = _area(design)
-        cap = design.capacity_mm(area, EDGE, FRAC, values)
-        state = fit.check(design, area, EDGE, FRAC, values)
+        cap = design.capacity_mm(area, EDGE, design.feed_frac, values)
+        state = fit.check(design, area, EDGE, design.feed_frac, values)
         assert state.capacity_mm == cap, design.key
         detail = state.detail
         assert state.reason in detail, design.key
@@ -91,13 +94,17 @@ def test_the_quoted_length_is_one_that_actually_fits():
     for design in registry.DESIGNS:
         values = _too_long(design)
         area = _area(design)
-        state = fit.check(design, area, EDGE, FRAC, values)
+        state = fit.check(design, area, EDGE, design.feed_frac, values)
         quoted = float(state.detail.split("at most ")[1].split(" mm")[0])
         assert quoted <= state.capacity_mm, design.key
         assert state.capacity_mm - quoted < 0.01, design.key
         # ... and typing it back in draws an antenna again.
         assert fit.check(
-            design, area, EDGE, FRAC, dict(values, **{design.LENGTH_KEY: quoted})
+            design,
+            area,
+            EDGE,
+            design.feed_frac,
+            dict(values, **{design.LENGTH_KEY: quoted}),
         ).ok
 
 
@@ -136,8 +143,10 @@ def test_the_overflowing_candidate_starts_at_the_same_feed_point():
     and runs the same way in -- only its far end escapes the rectangle."""
     for design in registry.DESIGNS:
         area = _area(design)
-        fitting = fit.check(design, area, EDGE, FRAC, design.default_values(F0))
-        spilling = fit.check(design, area, EDGE, FRAC, _too_long(design))
+        fitting = fit.check(
+            design, area, EDGE, design.feed_frac, design.default_values(F0)
+        )
+        spilling = fit.check(design, area, EDGE, design.feed_frac, _too_long(design))
         # Same point, to within re-expressing the fraction in a bigger
         # rectangle (a float hair, far under a KiCad nanometre).
         assert all(

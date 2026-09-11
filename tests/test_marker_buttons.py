@@ -161,8 +161,12 @@ def test_the_marker_button_comes_after_the_settings_it_places_with():
         # The settings come first -- both boxes build more than one row of
         # them (the feed-width slider, then the Feed layer picker).
         assert row >= 2, "the button is above the marker settings"
-        # ... and the status line last, under the button.
-        assert box.items[row + 1 :] == [section._status_label]
+        # ... and the status line last, under the button (the area box adds its
+        # bold edit-hint row under that, which says what to do with what landed).
+        tail = [section._status_label]
+        if getattr(section, "_hint_label", None) is not None:
+            tail.append(section._hint_label)
+        assert box.items[row + 1 :] == tail
 
 
 def test_the_feed_box_shows_a_picture_of_the_marker():

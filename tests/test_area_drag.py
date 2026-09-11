@@ -220,7 +220,7 @@ def test_place_draws_the_designs_starter_area_and_it_decodes():
     d = _decode(board)
     assert abs(d["w_mm"] - want_w) < 0.01 and abs(d["h_mm"] - want_h) < 0.01
     assert d["edge"] == "bottom"
-    assert abs(d["frac"] - area_section.START_FRAC) < 0.01
+    assert abs(d["frac"] - section.page.design.feed_frac) < 0.01
 
 
 def test_the_starter_area_is_capped_by_the_board_outline():
@@ -457,7 +457,7 @@ def test_the_group_name_says_how_the_marker_is_edited():
     name = _group(board).GetName()
     assert name.startswith(area_marker.MARKER_NAME)
     assert name.endswith(area_marker.HINT_TEXT)
-    assert "double-click to edit the marker" in name
+    assert "double-click to drag the area rectangle" in name
 
 
 def test_a_reworded_caption_still_finds_the_marker():
@@ -469,14 +469,26 @@ def test_a_reworded_caption_still_finds_the_marker():
 def test_the_status_line_says_how_the_marker_is_edited():
     """The bottom line of the box, wherever it describes a placed marker: this
     box has no width or height field, so that is the answer to "where do I
-    change this?"."""
+    change this?". It gets a bold row of its own under the description, shown
+    only while there is a marker to double-click."""
     board, section = _placed()
     _with_kicad(board, section.refresh_status)
-    text = section._status_label.GetLabel()
-    assert area_marker.HINT_TEXT.capitalize() in text
-    assert "Area" in text  # after the description, not instead of it
-    # ... and it is not crammed into the title over the sliders.
+    hint = section._hint_label
+    assert area_marker.HINT_TEXT in hint.GetLabel()
+    assert hint.shown
+    # ... after the description, not instead of it, and not crammed into the
+    # title over the sliders.
+    assert "Area" in section._status_label.GetLabel()
     assert area_marker.HINT_TEXT not in area_section.AreaSection._TITLE
+
+
+def test_the_hint_row_is_hidden_with_no_marker_to_edit():
+    board, section = _placed()
+    for group in list(board.Groups()):
+        board.Remove(group)
+    _with_kicad(board, section.refresh_status)
+    assert not section._hint_label.shown
+    assert not section._hint_label.GetLabel()
 
 
 # --------------------------------------------------------------------------- #

@@ -14,7 +14,7 @@ moves the same way — drag the arrow (a footprint, so it moves as one thing and
 can't be pulled apart) to the edge the feed enters from and the wizard lands its
 base back on the nearest edge, squared to it, at the point it was dropped
 (``area_marker.sync_marker``). Moving (M) and rotating (R) work as they do for
-anything else on the board. The status line under this box says so whenever
+anything else on the board. A bold line under the status line says so whenever
 there is a marker to say it about (EDIT_HINT), in the same words the marker
 carries on the board — KiCad draws the group's *name* over it, and that name
 ends in ``area_marker.HINT_TEXT`` — so the window and the drawing tell the user
@@ -28,6 +28,15 @@ values are shared across both pages through the FormModel; so is the User layer
 this marker is drawn on, picked in the wizard's own Advanced pane
 (``build_layer_picker``). The feed width is visual only: it sizes the drawn
 triangle, and a sync carries the new size onto the board.
+
+Under the Feed layer, for a design that radiates against a plane rather than
+against the pour beside it (``design.needs_ground_plane`` — the patch), one
+more picker: **Ground layer** (``_build_ground_layer``), the copper layer the
+board's own pour has to cover the area on. It draws nothing; it tells the area
+checks which layer is the antenna's reference, which turns their "copper is
+stacked over the area" warning into its opposite (markers/area_checks.py). It
+offers every copper layer but the feed's, and follows that pick as it moves. A
+design that wants no plane builds no picker.
 
 And, under the feed width and built like it, one control that is not a reading
 of the board but a lever on it: **Angle** (``_build_angle``) — a slider to sweep
@@ -69,8 +78,8 @@ import wx
 
 from ...emkit.gui.board import board_edge_span_mm
 from ...emkit.gui.sections.marker import GAP_DEFAULT, MARKER_LAYERS, FeedMarkerSection
-from ...emkit.gui.theme import PAD, ROW
-from ...emkit.gui.widgets import UnitSlider
+from ...emkit.gui.theme import PAD, ROW, bolded
+from ...emkit.gui.widgets import UnitSlider, set_choice, set_tip
 from ...emkit.markers import feed_marker
 from ...legacy import area_marker_v1
 from ...markers import area_marker
@@ -81,10 +90,9 @@ from ...markers import area_marker
 # the drag's business -- these bound the plugin's opening guess, not the area.
 MIN_SIDE_MM = area_marker.MIN_SIDE_MM
 MAX_SIDE_MM = 200.0
-# The feed of a fresh marker sits at 30 % of its bottom edge: it leaves the
-# bend of an L or an F more room than the middle does. Where it goes after
-# that is wherever the arrow is dragged.
-START_FRAC = 0.3
+# Where the feed of a fresh marker sits along its bottom edge is the design's
+# own (``AntennaDesign.feed_frac``): a bent monopole wants it off to one side,
+# a patch is centred on it. Where it goes after that is wherever it is dragged.
 
 # The feed gap the scan sizes its ground stub from is fixed at the runner's
 # default (GAP_DEFAULT, hundredths of a mm) rather than exposed as a slider —
@@ -100,11 +108,13 @@ FEED_GAP_MM = GAP_DEFAULT / 100.0
 ANGLE_SCALE = 10
 ANGLE_RANGE = (0, 360 * ANGLE_SCALE)
 
-# How the area is edited, said on the status line under this box whenever it
-# describes a placed marker. The marker itself says the same thing on the
-# canvas -- KiCad draws its group's name over it, and that name ends in these
-# words (area_marker.HINT_TEXT) -- so the window and the board agree.
-EDIT_HINT = f"{area_marker.HINT_TEXT.capitalize()} in the PCB editor."
+# How the area is edited, said on its own bold line under the status line
+# whenever that describes a placed marker -- the one instruction in this box
+# that is an instruction, so it does not trail off the end of a paragraph
+# describing the rectangle. The marker itself says the same thing on the canvas
+# -- KiCad draws its group's name over it, and that name ends in these words
+# (area_marker.HINT_TEXT) -- so the window and the board agree.
+EDIT_HINT = f"In the PCB editor, {area_marker.HINT_TEXT}."
 
 
 def _v1_markers(n):
@@ -156,6 +166,7 @@ class AreaSection(FeedMarkerSection):
 
         layer_grid = wx.FlexGridSizer(2, ROW, PAD)
         self.build_feed_layer(p, layer_grid)
+        self._build_ground_layer(p, layer_grid)
         box.Add(layer_grid, 0, wx.EXPAND | wx.TOP, ROW)
 
         # The button comes after the settings it places the marker with, as the
@@ -169,7 +180,112 @@ class AreaSection(FeedMarkerSection):
 
         self._status_label = self.wrap_label(p, mute=True)
         box.Add(self._status_label, 0, wx.EXPAND | wx.TOP, PAD)
+
+        # EDIT_HINT's own row, bold and full contrast: it is what the user does
+        # next, not part of the muted description above it. Empty (and so
+        # invisible) until refresh_status finds a marker to edit.
+        self._hint_label = bolded(self.wrap_label(p))
+        box.Add(self._hint_label, 0, wx.EXPAND | wx.TOP, PAD)
         self.add_to_body(body, box)
+
+    def _build_ground_layer(self, pane, grid):
+        """The Ground-layer picker (two cells of ``grid``, under the Feed
+        layer), for a design that radiates against a plane rather than against
+        the pour it reaches through the feed edge (``needs_ground_plane`` --
+        the patch, and nothing else so far). A design that doesn't want one
+        gets no widget at all, and ``ground_layer_name`` answers "" for it:
+        an empty picker on a monopole page would be a question with no answer.
+
+        It names the layer the plane goes on -- and the plane is part of what
+        gets simulated: a pass splices the area rectangle onto it
+        (design/wizard_scan.py) so every candidate has its reference whether or
+        not the board is poured there yet, and the sweep preview sketches that
+        same rectangle (gui/sections/scan.py). Nothing here pours a zone on the
+        user's board, though; the splice lives in the scan's own gerber copies.
+        The pick also tells the advisory checks which layer is the antenna's
+        reference: copper under the area stops being a warning there, since it
+        is the antenna working (markers/area_checks.py).
+
+        It defaults to the **bottom** copper, which is the plane on the
+        two-layer board a patch is almost always drawn on. That is a default
+        for a pick with an obvious answer, not for a missing input: the picker
+        shows it, and a stackup whose plane is an inner layer is one selection
+        away. The layer the antenna is *fed* on is not offered at all
+        (``_refresh_ground_choices``)."""
+        if not self.page.design.needs_ground_plane:
+            self.ground_layer = None
+            return
+        from ...emkit.gui.widgets import FIELD_W
+
+        grid.Add(wx.StaticText(pane, label="Ground layer"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.ground_layer = wx.Choice(pane, size=(FIELD_W, -1))
+        self._refresh_ground_choices()
+        # The feed pick decides what is left to choose from, so the list is
+        # rebuilt whenever it moves -- by the user here, by a page switch in
+        # ``restore``.
+        self.feed_layer.Bind(
+            wx.EVT_CHOICE, lambda event: self._refresh_ground_choices()
+        )
+        set_tip(
+            self.ground_layer,
+            "The copper layer carrying the ground plane this antenna radiates "
+            "against. Every candidate is simulated over a plane covering the "
+            "antenna area on it — spliced into the scan's own gerbers, and "
+            "sketched on the board by the preview — so pour your real plane "
+            "there before you fabricate. The Feed layer is not offered: the "
+            "antenna and the plane it radiates against cannot share a layer",
+        )
+        grid.Add(self.ground_layer, 0)
+
+    def _refresh_ground_choices(self):
+        """Fill the Ground-layer picker with the board's copper layers **less
+        the feed layer**, keeping the current pick if it survives and falling
+        back to the bottom copper if it doesn't.
+
+        The plane is what the antenna radiates against; the feed layer is what
+        it is drawn on. One layer can't be both -- picking it would ask the
+        checks to read the same copper as the antenna and as its reference --
+        so the answer is left out of the question rather than warned about
+        after the fact."""
+        from ...emkit.gui.board import board_layer_names
+
+        copper, _ = board_layer_names()
+        names = [name for name in copper if name != self.feed_layer_name()]
+        current = self.ground_layer.GetStringSelection()
+        self.ground_layer.Clear()
+        for name in names:
+            self.ground_layer.Append(name)
+        if current in names:
+            self.ground_layer.SetStringSelection(current)
+        elif names:
+            self.ground_layer.SetSelection(len(names) - 1)
+
+    def ground_layer_name(self):
+        """The Ground-layer pick (copper layer suffix), or "" for a design
+        that has no such picker (see ``_build_ground_layer``)."""
+        if getattr(self, "ground_layer", None) is None:
+            return ""
+        return self.ground_layer.GetStringSelection()
+
+    # --- shared / persisted state ---------------------------------------------
+    def snapshot(self):
+        """The base's picks plus the Ground layer, for the design that has one.
+        It rides the shared form like the feed picks do, so the pick follows
+        the user from page to page -- but it is *saved* in its designer's own
+        namespace, since the layer a design radiates against belongs to that
+        design (pages/wizard.py builds the file's key)."""
+        data = super().snapshot()
+        if getattr(self, "ground_layer", None) is not None:
+            data["ground_layer"] = self.ground_layer.GetStringSelection()
+        return data
+
+    def restore(self, data):
+        super().restore(data)
+        if getattr(self, "ground_layer", None) is not None:
+            # The restored feed pick may have freed a layer (or taken the one
+            # standing) before the ground pick is applied.
+            self._refresh_ground_choices()
+            set_choice(self.ground_layer, data.get("ground_layer"))
 
     def _build_angle(self, pane, grid):
         """The Angle row (three cells of ``grid``, under the Feed width it is
@@ -405,7 +521,7 @@ class AreaSection(FeedMarkerSection):
             self._activate_layer(board, layer_id)
             w_mm, h_mm = self._starter_size()
             x, y = area_marker.place_marker(
-                board, layer_n, w_mm, h_mm, START_FRAC, self.tri_w_mm()
+                board, layer_n, w_mm, h_mm, self.page.design.feed_frac, self.tri_w_mm()
             )
         except Exception as exc:
             self._set_status(f"✗ {exc}")
@@ -466,6 +582,9 @@ class AreaSection(FeedMarkerSection):
         what the user is still typing."""
         markers = self._markers()
         self._sync_button(markers)
+        # Nothing placed, or nothing readable: no marker to double-click, so the
+        # hint row goes away until the line below finds one.
+        self._set_hint("")
         if not markers:
             self._show_angle(None)
             self._set_status(
@@ -483,11 +602,22 @@ class AreaSection(FeedMarkerSection):
             return
         if not keep_angle:
             self._show_angle(d["angle_deg"])
-        # The line ends with how the marker is edited, every time it describes
-        # one: this box has no width, height or feed-position field, so the
-        # answer to "where do I change this?" belongs where the marker is
+        # How the marker is edited follows the description of it, every time
+        # there is one: this box has no width, height or feed-position field, so
+        # the answer to "where do I change this?" belongs where the marker is
         # described rather than in the title over an unrelated slider.
-        self._set_status(f"{self._placed_text(markers, d)} {EDIT_HINT}")
+        self._set_status(self._placed_text(markers, d))
+        self._set_hint(EDIT_HINT)
+
+    def _set_hint(self, text):
+        """Put ``text`` on the bold hint row under the status line, hiding the
+        row when it is empty -- an empty StaticText still takes a line's height,
+        which would leave a gap under every status line that has no hint."""
+        if not self.page:
+            return
+        self._hint_label.SetLabel(text)
+        self._hint_label.Show(bool(text))
+        self._relayout()
 
     def _show_angle(self, degrees):
         """Put the Angle control on the marker's own angle (0 with no marker on

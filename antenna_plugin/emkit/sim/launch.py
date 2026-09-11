@@ -76,13 +76,22 @@ class Launcher:
             return f"solver: {self.exe}"
         return f"solver: {os.path.basename(self.exe)} in {self.tag} ({self.arch})"
 
-    def command(self, yaml_path, grid_only=False, control=None, stamp=None):
+    def command(
+        self, yaml_path, grid_only=False, control=None, stamp=None, mount=None
+    ):
         """``(argv, cwd, name)`` for one solve of *yaml_path*.
 
         ``name`` is the container's, or None for a native run -- it is what a
         kill needs, and only one of the two kinds has one.
+
+        ``mount`` is the directory the run's files live under, when that is not
+        the yaml's own folder: the scan's candidate configs name gerbers
+        plotted once in the scan folder above them, and a native run resolves
+        that ``../`` happily while a container cannot see above its mount. It
+        changes nothing about a native run.
         """
         run_dir = os.path.dirname(os.path.abspath(str(yaml_path)))
+        base = os.path.abspath(str(mount)) if mount else run_dir
         args = []
         if grid_only:
             args.append("--grid-only")
@@ -103,11 +112,12 @@ class Launcher:
             self.arch,
             yaml_path,
             args=[
-                container.cmd.inside(part, run_dir, container.cmd.WORK_DIR)
-                if _is_run_file(part, run_dir)
+                container.cmd.inside(part, base, container.cmd.WORK_DIR)
+                if _is_run_file(part, base)
                 else part
                 for part in args
             ],
+            mount_dir=base,
             name=name,
         )
         if argv is None:
@@ -121,12 +131,12 @@ class Launcher:
         return container.enginepath.resolved(argv), run_dir, name
 
 
-def _is_run_file(word, run_dir):
-    """Whether an argument is a path inside the run directory (so it has to be
-    named as the container sees it) rather than a flag."""
+def _is_run_file(word, base):
+    """Whether an argument is a path inside the mounted directory (so it has to
+    be named as the container sees it) rather than a flag."""
     if word.startswith("-"):
         return False
-    return os.path.abspath(word).startswith(os.path.abspath(run_dir) + os.sep)
+    return os.path.abspath(word).startswith(os.path.abspath(base) + os.sep)
 
 
 def of(value):

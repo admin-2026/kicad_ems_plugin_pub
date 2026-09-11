@@ -3,6 +3,9 @@
 Sweeps ONE geometry parameter of the spec's design (registry.py) with the
 others held fixed, scoring each candidate against the target frequency:
 
+    splice the ground plane the design radiates against, if it has one, into a
+        copy of the picked layer's gerber -- once: it is the area rectangle,
+        the one thing in the sweep that doesn't vary (_ground_gerbers)
     for each candidate value of the swept parameter:
         solve the design's geometry (fixed feed point, from the area marker)
         splice its copper into a copy of the feed layer's gerber
@@ -66,6 +69,10 @@ The scan ``spec`` dict:
                                                     resonant length = auto
                                                     ladder)
     f0_ghz, n, feed_layer                        -- target + scan knobs
+    ground_layer                                 -- the copper layer the plane
+                                                    is spliced onto, for a
+                                                    design that radiates
+                                                    against one ("" otherwise)
     band_ghz, impedance_ohm, return_loss_db      -- the desired spec candidates
                                                     are judged against
 """
@@ -379,6 +386,69 @@ def spliced_rects(spec, rows):
     return rects
 
 
+def ground_polys(design, spec):
+    """The ground plane that belongs with every candidate of ``spec``, as
+    board-frame corner polygons: the area marker's own rectangle, for a design
+    that radiates against a plane rather than against the pour it reaches
+    through the feed edge (``needs_ground_plane`` -- the patch). Empty for
+    every other design, whose antenna is all on one layer.
+
+    The rectangle rather than anything patch-shaped, because it is the pour the
+    design asks the board for: cover the area on that layer and every candidate
+    of the sweep has its reference, whatever shape it turns out to be -- and
+    the plane is then the one thing in the sweep that does *not* vary, which is
+    why it is spliced once (_ground_gerbers) rather than per candidate.
+
+    One function for both consumers: the wizard sketches this on the board as
+    half of its preview (gui/sections/scan.py) and the scan splices it into the
+    gerbers, so what is drawn is what is simulated."""
+    if not design.needs_ground_plane:
+        return []
+    return geometry.candidate_polys(
+        [spec["area"]], spec.get("rot_deg") or 0.0, spec.get("pivot") or (0, 0)
+    )
+
+
+def _ground_gerbers(gerbers, spec, design):
+    """``gerbers`` with the design's ground plane spliced into the copper layer
+    it radiates against (``spec['ground_layer']``, the Area box's pick), or
+    ``gerbers`` unchanged for a design that needs no plane.
+
+    The antenna is only half of a patch: without the plane there is nothing for
+    its feed line to reference and no cavity to resonate, so every candidate is
+    simulated over one whether or not the board carries a pour there. Spliced
+    rather than substituted, since a gerber is additive: the plane merges with
+    whatever the user poured on that layer, and the simulation sees the union.
+
+    Written once for the whole sweep, beside the plotted gerbers it is spliced
+    from -- it is the same rectangle for every candidate (ground_polys), and a
+    per-candidate copy would be the same file n times."""
+    polys = ground_polys(design, spec)
+    if not polys:
+        return gerbers
+    layer = spec.get("ground_layer") or ""
+    if not layer:
+        raise RuntimeError(
+            f"the {design.name} radiates against a ground plane, but no ground "
+            "layer was picked in the Antenna area box"
+        )
+    plotted = _layer_file(gerbers, layer, "ground")
+    patched = plotted.parent / "ground_plane.gbr"
+    patched.write_text(
+        geometry.splice_copper(
+            plotted.read_text(encoding="utf-8"), polys, f"{design.key} ground plane"
+        ),
+        encoding="utf-8",
+    )
+    return dict(
+        gerbers,
+        copper=[
+            (name, str(patched) if name == layer else path)
+            for name, path in gerbers["copper"]
+        ],
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Results
 # --------------------------------------------------------------------------- #
@@ -464,7 +534,12 @@ def run_scan(
     one step a grid pass skips -- and only the combined grid view is written.
     """
     workdir = Path(workdir)
-    copper_text = _feed_layer_text(gerbers, spec["feed_layer"])
+    copper_text = _layer_file(gerbers, spec["feed_layer"], "feed").read_text(
+        encoding="utf-8"
+    )
+    # The antenna is spliced per candidate; the plane it radiates against is
+    # the same rectangle for all of them, so it is spliced here, once.
+    gerbers = _ground_gerbers(gerbers, spec, design_of(spec))
     p = _plan(spec, on_line)
     design, param, values = p.design, p.param, p.values
     base = _values(spec)
@@ -705,6 +780,11 @@ def _run_candidate(
             grid_only=grid_only,
             on_line=on_line,
             on_proc=on_proc,
+            # The scan folder, not the candidate's: this config names the
+            # gerbers plotted once above it (../gerbers, plane included),
+            # so that whole folder is what a containerised solve must be able
+            # to read -- every candidate dir is a child of it.
+            mount=cand_dir.parent,
         )
 
         if grid_only:
@@ -733,12 +813,12 @@ def _run_candidate(
     return result
 
 
-def _feed_layer_text(gerbers, feed_layer):
+def _layer_file(gerbers, layer, what):
     for name, path in gerbers["copper"]:
-        if name == feed_layer:
-            return Path(path).read_text(encoding="utf-8")
+        if name == layer:
+            return Path(path)
     raise RuntimeError(
-        f"feed layer {feed_layer} is not among the plotted copper layers"
+        f"{what} layer {layer} is not among the plotted copper layers"
     )
 
 

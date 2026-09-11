@@ -119,6 +119,27 @@ class AntennaDesign:
     wiring = ""  # what to route where once the footprint is placed
     footprint_prefix = ""  # library item-name prefix (see footprints.py)
 
+    # Whether this topology radiates against a ground plane on another copper
+    # layer rather than against the pour it reaches through the feed edge. A
+    # patch does; a monopole and an inverted-F do the opposite and want that
+    # layer clear. It is the one structural fact about a topology the *GUI*
+    # asks for -- the wizard grows a Ground-layer picker for a design that says
+    # yes (gui/sections/area.py) and the area checks then hold the board to
+    # that plane instead of warning about it (markers/area_checks.py). No
+    # geometry depends on it: the plane is the user's own copper, plotted with
+    # the rest of the board, and nothing here draws it.
+    needs_ground_plane = False
+
+    # Where a freshly placed area marker's feed arrow sits along its edge, as a
+    # fraction from the smaller coordinate (gui/sections/area.py places it
+    # there, and ``area_hint_mm`` sizes the rectangle around it). 30% leaves
+    # the bend of an L or an F more room than the middle does, which is what
+    # every wire design here wants; a patch is centred on its feed and wants
+    # the middle, or the starter rectangle has to be twice as wide as the
+    # antenna to hold it. Only the *starter* -- from the drop on, the arrow is
+    # wherever it is dragged.
+    feed_frac = 0.3
+
     # --- geometry knobs -------------------------------------------------------
     LENGTH_KEY = "length"  # the resonant parameter (auto ladder + refine)
     WIDTH_KEY = "width"  # the track width (sizes copper and pads)

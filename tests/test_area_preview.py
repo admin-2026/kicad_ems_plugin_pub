@@ -81,7 +81,8 @@ class _FakeShape:
         return self.shape
 
     def corners_mm(self):
-        """The polygon back in KiCad mm, for comparing against _rect_corners."""
+        """The polygon back in KiCad mm, for comparing against what was
+        handed to ``draw``."""
         return [(x / 1e6, y / 1e6) for (x, y) in self.points]
 
 
@@ -228,15 +229,43 @@ def _area_marker(board):
     return fp
 
 
-def _run(segments, board=None, layer=_FakePcbnew.F_Cu, width=0.5):
-    """Draw ``segments`` (a list of ((x0,y0),(x1,y1)) mm pairs) onto ``board``,
-    creating one carrying an area marker when none is given. Returns the
-    board."""
+def _rect(seg, width=0.5):
+    """One centerline segment as the copper rectangle a design would hand
+    ``draw``: the segment swept out to half-width, ends included. The test's
+    own arithmetic -- the preview is given finished polygons now, so the only
+    thing it can be checked against is a shape built here (the real one comes
+    from design.geometry.Geometry.preview_polys)."""
+    (x0, y0), (x1, y1) = seg
+    h = width / 2.0
+    if x0 == x1:
+        box = (x0 - h, min(y0, y1), x0 + h, max(y0, y1))
+    else:
+        box = (min(x0, x1), y0 - h, max(x0, x1), y0 + h)
+    (a0, b0, a1, b1) = box
+    return [(a0, b0), (a1, b0), (a1, b1), (a0, b1)]
+
+
+def _run(
+    segments, board=None, layer=_FakePcbnew.F_Cu, width=0.5, polys=None, plane=None
+):
+    """Draw ``segments`` (a list of ((x0,y0),(x1,y1)) mm pairs, buffered to
+    ``width``) onto ``board``, creating one carrying an area marker when none
+    is given. ``polys`` hands ``draw`` shapes directly, for the cases that are
+    about a polygon rather than about a candidate; ``plane`` is a second
+    ``(layer_id, polys)`` group, as a design that radiates against a ground
+    plane hands one over. Returns the board."""
     if board is None:
         board = _FakeBoard()
         _area_marker(board)
-    _with_fake_pcbnew(lambda: preview.draw(board, segments, layer, width))
+    shapes = polys if polys is not None else [_rect(s, width) for s in segments]
+    groups = [(layer, shapes)] + ([plane] if plane else [])
+    _with_fake_pcbnew(lambda: preview.draw(board, groups))
     return board
+
+
+# The plane a patch is previewed with: the area marker's own rectangle, on the
+# layer the wizard was told carries the pour.
+_PLANE = [[(-2.0, -2.0), (14.0, -2.0), (14.0, 10.0), (-2.0, 10.0)]]
 
 
 def _fp(board):
@@ -273,11 +302,13 @@ def test_draw_puts_one_filled_copper_polygon_per_segment():
         assert poly.layer == _FAKE_PCBNEW.F_Cu
         assert poly.filled is True
         assert poly.width == 0  # only the fill shows
-        assert poly.corners_mm() == preview._rect_corners(seg, 0.5)
+        assert poly.corners_mm() == _rect(seg)
 
 
-def test_zero_length_segments_are_skipped():
-    board = _run([((2.0, 2.0), (2.0, 2.0))] + _STRAIGHT)
+def test_a_shape_that_is_not_a_polygon_is_skipped():
+    """Two corners are a line, not copper: a caller that hands one over gets
+    it dropped rather than a zero-area shape saved with the board."""
+    board = _run(_STRAIGHT, polys=[[(2.0, 2.0), (3.0, 3.0)], _rect(_STRAIGHT[0])])
     assert len(_shapes(board)) == 1
 
 
@@ -286,7 +317,7 @@ def test_a_candidate_with_nothing_to_draw_leaves_no_empty_footprint():
     which would be an invisible item to click and one more thing saved with the
     board."""
     board = _run(_BENT)
-    _run([((2.0, 2.0), (2.0, 2.0))], board=board)
+    _run(_STRAIGHT, board=board, polys=[[(2.0, 2.0), (3.0, 3.0)]])
     assert not _with_fake_pcbnew(lambda: preview.exists(board))
     empty = _FakeBoard()
     _area_marker(empty)
@@ -309,7 +340,7 @@ def test_the_footprint_is_anchored_on_what_it_draws():
     """Its origin sits in the middle of the sketch -- not at the board origin,
     where an anchor nowhere near the drawing would be a stray click target."""
     board = _run(_BENT)
-    corners = [c for seg in _BENT for c in preview._rect_corners(seg, 0.5)]
+    corners = [c for seg in _BENT for c in _rect(seg)]
     xs, ys = [x for (x, _) in corners], [y for (_, y) in corners]
     want = ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
     assert _fp(board).position == tuple(_FakePcbnew.FromMM(v) for v in want)
@@ -326,7 +357,7 @@ def test_a_redraw_re_anchors_and_squares_the_footprint():
     _run(_STRAIGHT, board=board)
     assert fp.orientation == 0
     assert fp.position != (123, 456)
-    assert _shapes(board)[0].corners_mm() == preview._rect_corners(_STRAIGHT[0], 0.5)
+    assert _shapes(board)[0].corners_mm() == _rect(_STRAIGHT[0])
 
 
 # --------------------------------------------------------------------------- #
@@ -345,9 +376,7 @@ def test_redraw_reuses_the_shapes_already_on_the_footprint():
     assert fp.removed == [] and board.removed == []
     assert len(board.GetFootprints()) == 2  # the marker and the one preview
     # ... and they carry the new candidate, not the old one.
-    assert after[0].corners_mm() == preview._rect_corners(
-        ((0.0, 0.0), (12.0, 0.0)), 0.5
-    )
+    assert after[0].corners_mm() == _rect(((0.0, 0.0), (12.0, 0.0)))
     assert all(p.writes == 2 for p in after)
 
 
@@ -397,6 +426,42 @@ def test_a_candidate_that_does_not_fit_is_drawn_on_the_marker_layer():
     assert _fp(board).removed == []
     _run(_BENT, board=board)  # ... fits again
     assert [p.layer for p in _shapes(board)] == [_FAKE_PCBNEW.F_Cu] * 2
+
+
+def test_a_plane_is_drawn_with_the_candidate_on_its_own_layer():
+    """A design that radiates against a ground plane previews both halves: the
+    candidate on the feed copper, the plane on the layer carrying the pour, in
+    one footprint the user clicks, redraws and deletes as one thing."""
+    board = _run(_BENT, plane=(_FAKE_PCBNEW.B_Cu, _PLANE))
+    polys = _shapes(board)
+    assert [p.layer for p in polys] == [_FAKE_PCBNEW.F_Cu] * 2 + [_FAKE_PCBNEW.B_Cu]
+    assert polys[-1].corners_mm() == _PLANE[0]
+    assert len(board.GetFootprints()) == 2  # the marker and the one preview
+
+
+def test_the_plane_moves_layers_without_taking_the_candidate_with_it():
+    """The two groups are independent: a candidate that stops fitting goes to
+    the marker layer while the plane stays where the pour is, and the shapes
+    are reused across both moves (a reused shape is told its layer every
+    redraw)."""
+    board = _run(_BENT, plane=(_FAKE_PCBNEW.B_Cu, _PLANE))
+    before = _shapes(board)
+    _run(_BENT, board=board, layer=_USER_1, plane=(_FAKE_PCBNEW.B_Cu, _PLANE))
+    moved = _shapes(board)
+    assert [id(p) for p in moved] == [id(p) for p in before]
+    assert [p.layer for p in moved] == [_USER_1] * 2 + [_FAKE_PCBNEW.B_Cu]
+    assert _fp(board).removed == []
+
+
+def test_a_plane_that_goes_away_leaves_no_shape_behind():
+    """Switching to a design that needs no plane (or a board with no such
+    layer) drops the group: the surplus shape is detached like any other, so a
+    stale rectangle is not left on the pour."""
+    board = _run(_BENT, plane=(_FAKE_PCBNEW.B_Cu, _PLANE))
+    assert len(_shapes(board)) == 3
+    _run(_BENT, board=board)
+    polys = _shapes(board)
+    assert len(polys) == 2 and [p.layer for p in polys] == [_FAKE_PCBNEW.F_Cu] * 2
 
 
 def test_a_preview_on_the_marker_layer_is_still_cleared():

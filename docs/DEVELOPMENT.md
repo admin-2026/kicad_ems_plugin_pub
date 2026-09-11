@@ -208,6 +208,17 @@ antenna topology:
   plane: a *short pin* to the pour, a *feed pin* tapped a little along from it,
   and an arm that meanders to fit. It packs a quarter wave into a fraction of
   the board, and the tap is a match knob a monopole doesn't have.
+- **Inset-fed microstrip patch** — a half-wave rectangle radiating against a
+  ground plane on another copper layer, fed by a microstrip line let into a
+  notch in its edge (the inset is the match; the line's own length walks the
+  whole patch away from the marker's feed edge). It is the one topology that is a
+  sheet of copper rather than a wire, and the one that needs something of the
+  board: its **Ground layer** pick (in the Area box, built only for a design
+  whose `needs_ground_plane` says so) names the layer the plane goes on. Every
+  candidate is simulated over one: the scan splices the area rectangle onto
+  that layer's gerber (`wizard_scan.ground_polys`) and the sweep preview
+  sketches the same rectangle on the board, so pour your real plane there
+  before you fabricate rather than before you scan.
 
 The flow is the same either way. Mark where the antenna may live with the
 **area marker** — a rectangle graphic with a feed arrow on one edge, dropped on
@@ -221,7 +232,8 @@ the section's **Angle** field turns it to any angle in between (a group carries
 no angle KiCad will let you type). Then pick which
 of the design's geometry parameters to sweep — the resonant length, the track
 width, and whatever else the topology has (the monopole's stem; the
-inverted-F's height and feed-to-short tap) — with the others fixed, and moving
+inverted-F's height and feed-to-short tap; the patch's width, feed-line length,
+inset and inset gap) — with the others fixed, and moving
 the slider previews the candidate on the board, as a footprint of its own next
 to the marker (select or delete either without touching the other). Push it
 past what the area
@@ -260,7 +272,8 @@ module against one contract (`antenna_plugin/design/base.py`) — the wizard
 page, the scan driver and the scan's view manifests know nothing about any
 particular antenna — and the geometry, marker decoding and scan logic are pure and
 unit-tested off KiCad (`tests/test_geometry.py`, `tests/test_lmonopole.py`,
-`tests/test_ifa.py`, `tests/test_meander.py`, `tests/test_designs.py`,
+`tests/test_ifa.py`, `tests/test_meander.py`, `tests/test_patch.py`,
+`tests/test_designs.py`,
 `tests/test_area_marker.py`,
 `tests/test_wizard_scan.py`). Full details, including how to add a design:
 [dev_docs/antenna-wizard.md](../dev_docs/antenna-wizard.md).

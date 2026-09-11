@@ -34,7 +34,9 @@ def _area(design, f0=F0):
 
 
 def _default_geo(design, f0=F0):
-    return design.solve(_area(design, f0), "bottom", 0.3, design.default_values(f0))
+    return design.solve(
+        _area(design, f0), "bottom", design.feed_frac, design.default_values(f0)
+    )
 
 
 def _fab_lines(text):
@@ -183,7 +185,7 @@ def test_the_record_reads_back_as_the_values_it_was_written_from():
             )
         # ... and the values read back re-solve the copper they were written
         # beside (to the nanometre they are written at -- see modtext.num).
-        again = design.solve(_area(design), "bottom", 0.3, read.values)
+        again = design.solve(_area(design), "bottom", design.feed_frac, read.values)
         was = _default_geo(design)
         assert [p.stub for p in again.paths] == [p.stub for p in was.paths]
         for path, before in zip(again.paths, was.paths):

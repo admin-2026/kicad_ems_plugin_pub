@@ -90,9 +90,10 @@ class AdvancedSection(Section):
         self._build(body)
 
     def _build(self, body):
+        section_box = self.box(self._TITLE)
         self.adv_pane = wx.CollapsiblePane(
             self.scroll,
-            label=theme.numbered(self._TITLE, self.step),
+            label="Settings",
             style=wx.CP_NO_TLW_RESIZE,
         )
         self.adv_pane.SetToolTip(self._TIP)
@@ -139,7 +140,8 @@ class AdvancedSection(Section):
 
         pane.SetSizer(ps)
         self.adv_pane.Bind(wx.EVT_COLLAPSIBLEPANE_CHANGED, self.page._on_pane_changed)
-        self.add_to_body(body, self.adv_pane)
+        section_box.Add(self.adv_pane, 0, wx.EXPAND)
+        self.add_to_body(body, section_box)
 
     # --- the functional groups (one box each, options.ADV_GROUPS) -------------
     def _group_box(self, pane, key):

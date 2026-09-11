@@ -1,8 +1,9 @@
 """AreaBanner: the wizard's advisory area-marker banner, docked under its form.
 
 It runs the area-marker checks (markers.area_checks -- the scanned antenna's
-copper over existing metal in the area, feed-axis grounding / shielding, and
-copper stacked over the area) against the live board and lists them as
+copper over existing metal in the area, feed-axis grounding / shielding, copper
+stacked over the area, and the reference plane a patch needs under it) against
+the live board and lists them as
 **warnings** in the shared banner strip (banner.BannerSection). Unlike the
 simulate view's PreflightBanner these never gate anything: the checks flag
 reasons to look, not blockers (see dev_docs/area-checks.md). Any blocker in
@@ -70,7 +71,9 @@ class AreaBanner(BannerSection):
         return (
             self._overlap_rows(board, scan)
             + self._plan_rows(scan)
-            + area_checks.area_problems(board, self.page.feed_layer_name())
+            + area_checks.area_problems(
+                board, self.page.feed_layer_name(), self.page.ground_layer_name()
+            )
         )
 
     def _plan_rows(self, scan):

@@ -420,8 +420,6 @@ def test_the_two_markers_share_one_layer_pick():
     # under one label, contributed by one snapshot -- so a pick made in either
     # page's Advanced pane is the pick the other page places with (the shared
     # form carries it between them, gui.model).
-    assert area.AreaSection.snapshot is marker.FeedMarkerSection.snapshot
-    assert area.AreaSection.restore is marker.FeedMarkerSection.restore
     assert not hasattr(area.AreaSection, "layer_key")  # no per-marker key left
     feed, section = _feed_section(), _area_section()
     for owner in (feed, section):
@@ -429,6 +427,15 @@ def test_the_two_markers_share_one_layer_pick():
         owner.marker_layer.SetStringSelection("User.5")
     assert feed.snapshot()[marker.LAYER_KEY] == "User.5"
     assert section.snapshot()[marker.LAYER_KEY] == "User.5"
+    # The area section may *add* a pick of its own (a designer's Ground layer,
+    # for a design that radiates against a plane) but never re-implements the
+    # shared ones: every key the base contributes still comes out of the base's
+    # own snapshot, with the same value.
+    shared = marker.FeedMarkerSection.snapshot(section)
+    assert {key: section.snapshot()[key] for key in shared} == shared
+    # ... and a restore reaches it through the base too.
+    section.restore({marker.LAYER_KEY: "User.7"})
+    assert section.marker_layer_n() == 7
 
 
 def test_the_area_section_takes_the_picker_the_pane_builds():

@@ -8,8 +8,10 @@ the same work whatever the antenna looks like, and lives here.
 
 The two shapes this module is built around:
 
-``Path``      one centerline polyline of axis-aligned segments, plus the kind
-              of copper *stub* that extends behind its first point. A stub is
+``Path``      one centerline polyline of axis-aligned segments, the width its
+              copper is drawn at (the design's track width unless it says
+              otherwise), plus the kind of copper *stub* that extends behind
+              its first point. A stub is
               how a path ties into the board's ground pour: ``GROUND`` for a
               pin that simply merges with the pour (an inverted-F's short pin),
               ``FEED`` for the port pin, which is pushed out past the runner's
@@ -79,11 +81,22 @@ NO_STUB, GROUND_STUB, FEED_STUB = "none", "ground", "feed"
 
 class Path(NamedTuple):
     """One centerline polyline of a candidate: ``points`` (>= 2 KiCad-mm
-    points, consecutive ones axis-aligned) and the ``stub`` kind extending
-    behind ``points[0]``, opposite the first segment."""
+    points, consecutive ones axis-aligned), the ``stub`` kind extending behind
+    ``points[0]``, opposite the first segment, and ``width`` -- how wide this
+    path's own copper is drawn.
+
+    A width of 0 (the default) means *the design's track width*, which is what
+    a design made of one track wants: the wizard's Track-width row sizes every
+    path of it, and the footprint's pads with them. A path states its own only
+    where the antenna is genuinely not one track -- a patch's body is a
+    rectangle tens of millimetres across fed by a millimetre of microstrip, and
+    the two cannot be one number. It is still copper of a stated width around a
+    centerline, so everything below (the corner squaring, the stubs, the gerber
+    regions) is the same work; only the half-width differs per path."""
 
     points: tuple
     stub: str = NO_STUB
+    width: float = 0.0
 
 
 class Geometry(NamedTuple):
@@ -103,12 +116,12 @@ class Geometry(NamedTuple):
     def copper_rects(self, trace_w_mm, gap_mm, include_stub=True):
         """The candidate's copper as axis-aligned rectangles (KiCad mm,
         normalized (x0, y0, x1, y1)): one per centerline segment, buffered to
-        the trace width. Each segment overshoots its far end by a half-width
+        the trace width -- or to the path's own width where it states one
+        (:class:`Path`). Each segment overshoots its far end by a half-width
         where another segment continues from it, so every corner is square;
         the first segment of a path is extended backwards by its stub
         (``include_stub=False`` drops that -- the footprint starts at the pins,
         where the user's own copper connects)."""
-        h = trace_w_mm / 2
         stubs = {
             NO_STUB: 0.0,
             GROUND_STUB: GROUND_STUB_MM,
@@ -117,17 +130,28 @@ class Geometry(NamedTuple):
         rects = []
         for path in self.paths:
             back = stubs[path.stub] if include_stub else 0.0
-            rects.extend(path_rects(path.points, h, back))
+            rects.extend(path_rects(path.points, (path.width or trace_w_mm) / 2, back))
         return rects
+
+    def preview_polys(self, trace_w_mm, rot_deg=0.0, pivot=(0.0, 0.0)):
+        """The candidate's copper as board-frame corner polygons (KiCad mm):
+        ``copper_rects`` without the stubs, rotated onto the board -- what the
+        wizard draws as its live preview (markers.preview.draw), so the sketch
+        is exactly the copper the footprint would place, per-path widths and
+        all. The stubs stay off: they are the simulation's reach into the
+        pour, not copper anybody fabricates."""
+        return candidate_polys(
+            self.copper_rects(trace_w_mm, 0.0, include_stub=False), rot_deg, pivot
+        )
 
     def centerline_segments(self, rot_deg=0.0, pivot=(0.0, 0.0)):
         """Every path's centerline as board-frame segment pairs (KiCad mm):
         consecutive points rotated by ``rot_deg`` about ``pivot`` -- the step
         that puts a geometry solved in a rotated area marker's derotated frame
-        back onto the board (identity at 0). The wizard draws these onto a
-        copper layer as its live antenna preview (markers.preview), stroked at
-        the trace width so they read as the copper the footprint would
-        place."""
+        back onto the board (identity at 0). The bare centerline, for whoever
+        wants the shape rather than the copper -- how far a candidate that
+        doesn't fit reaches out of its rectangle (design.fit), say. What the
+        wizard *draws* is the copper itself (``preview_polys``)."""
         segments = []
         for path in self.paths:
             pts = [markergeom.rotate_pt(p, rot_deg, pivot) for p in path.points]

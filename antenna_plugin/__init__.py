@@ -1,6 +1,6 @@
 """KiCad pcbnew action plugin: the Antenna Designer EM-simulation dialog."""
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 from .emkit.kicad.hosted import hosted
 

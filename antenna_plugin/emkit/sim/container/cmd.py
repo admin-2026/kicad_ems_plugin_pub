@@ -41,19 +41,23 @@ bearing:
                     there -- so the second run of a board never started. The
                     name is derived from the run's stamp and answers the same
                     question.)
-``-v <dir>:/work``  the run directory, read-write: the config, the gerbers,
-                    the control file and everything the run writes. The
-                    *only* thing mounted read-write, and the only thing of the
-                    user's the container can see at all.
+``-v <dir>:/work``  the run's tree, read-write: the config, the gerbers, the
+                    control file and everything the run writes. The *only*
+                    thing mounted read-write, and the only thing of the user's
+                    the container can see at all. Usually the config's own
+                    folder; for a scan, the scan folder, because a candidate's
+                    config names the gerbers plotted once beside it.
 ``-v <bin>:/opt/solver:ro``
                     the install's binaries, read-only. Mounted rather than
                     baked into the image so that an image survives a plugin
                     upgrade unchanged.
-``-w /work``        the solver's cwd. ``config.write_yaml`` writes every path
-                    in the config relative to the yaml's own folder, which is
-                    exactly why the host runs it this way too -- so the same
-                    config resolves identically inside and out, and nothing has
-                    to be rewritten on the way in.
+``-w <yaml dir>``   the solver's cwd -- the config's own folder as the
+                    container sees it, ``/work`` itself whenever that is what
+                    is mounted. ``config.write_yaml`` writes every path in the
+                    config relative to the yaml's folder, which is exactly why
+                    the host runs it this way too -- so the same config
+                    resolves identically inside and out, and nothing has to be
+                    rewritten on the way in.
 ``--user``          the caller's, on Linux only, so a run's outputs belong to
                     the person who started it rather than to root. Docker
                     Desktop maps ownership itself and passing it there breaks
@@ -151,6 +155,7 @@ def run_argv(
     args=(),
     work_dir=None,
     solver_dir=None,
+    cwd=None,
     name=None,
     user=None,
     engine="docker",
@@ -163,6 +168,12 @@ def run_argv(
     ``solver_dir`` the host directory of binaries that becomes
     :data:`SOLVER_DIR`; either may be None when the caller has nothing to mount
     there (a version probe needs no run directory).
+
+    ``cwd`` is where inside the container the solver runs, :data:`WORK_DIR`
+    unless the caller says otherwise -- it is the mount root only when the
+    mount is the config's own folder. A scan mounts the folder *above* its
+    candidates (their configs reach up to the shared gerbers), so the cwd is
+    the candidate's directory under the mount.
 
     ``interactive`` swaps ``--rm`` for an attached terminal -- what a person
     asking for a shell wants, and never what a run wants.
@@ -178,7 +189,7 @@ def run_argv(
         argv += mount(work_dir, WORK_DIR)
     if solver_dir:
         argv += mount(solver_dir, SOLVER_DIR, read_only=True)
-    argv += ["-w", WORK_DIR, tag, str(exe), *[str(arg) for arg in args]]
+    argv += ["-w", cwd or WORK_DIR, tag, str(exe), *[str(arg) for arg in args]]
     return argv
 
 

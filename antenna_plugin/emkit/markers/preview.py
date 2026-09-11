@@ -1,12 +1,17 @@
 """Antenna-preview footprint: the candidate the wizard draws on the board.
 
 The preview is the shape the Scan section's rows describe right now, drawn as
-solid filled rectangles as wide as the track — on the feed copper layer while
-the candidate fits the marked area, on the area marker's own User layer while
+solid filled polygons — the candidate's own copper — on the feed copper layer
+while the candidate fits the marked area, on the area marker's own User layer while
 it doesn't (the antenna hanging out of the rectangle, in the marker's colour,
 rather than nothing at all). It is a sketch: nothing has been simulated and no
 footprint has been placed, so what is drawn here is never the antenna's real
 copper — the footprint section's is (design/footprints.py).
+
+``draw`` takes one group of polygons per layer, because an antenna is not
+always all on one: a design that radiates against a ground plane sketches that
+plane too, on the layer the wizard was told carries it. One footprint holds the
+lot, so the whole sketch is one thing to click, to redraw and to clear.
 
 It is its **own** board_only footprint (``AntennaPreview``), separate from the
 area marker it is solved against (area_marker.py). Two drawings the user reads
@@ -25,13 +30,11 @@ whole rule). Only the surplus a shorter candidate leaves over is detached, and
 the footprint itself only when the preview is cleared for good — through
 feed_marker._detach_footprint, which leaks it for the same reason.
 
-Coordinates are KiCad mm, Y down, in the board frame: the drawn segments come
-from design.geometry.Geometry.centerline_segments already rotated onto the
-board, so the footprint is squared to 0 degrees and anchored at the middle of
-what it carries (_anchor) and every shape is written where it lands.
+Coordinates are KiCad mm, Y down, in the board frame: the drawn polygons come
+from design.geometry.Geometry.preview_polys already rotated onto the board, so
+the footprint is squared to 0 degrees and anchored at the middle of what it
+carries (_anchor) and every shape is written where it lands.
 """
-
-import math
 
 from . import feed_marker
 
@@ -43,30 +46,6 @@ _REFERENCE = "PREVIEW"
 # --------------------------------------------------------------------------- #
 # Pure geometry
 # --------------------------------------------------------------------------- #
-def _rect_corners(seg_mm, width_mm):
-    """The four corners (KiCad mm) of the solid rectangle that renders a
-    centerline segment ``seg_mm`` at ``width_mm``: the segment swept out to
-    half-width on each side, with the ends pushed out by half-width too so
-    consecutive rectangles meet flush at bends (matching the square-capped
-    extent of a stroked track). Degenerate zero-length segments yield None."""
-    (x0, y0), (x1, y1) = seg_mm
-    dx, dy = x1 - x0, y1 - y0
-    length = math.hypot(dx, dy)
-    if length == 0:
-        return None
-    ux, uy = dx / length, dy / length  # along the segment
-    px, py = -uy, ux  # perpendicular (unit)
-    h = width_mm / 2.0
-    ax, ay = x0 - ux * h, y0 - uy * h  # end-capped endpoints
-    bx, by = x1 + ux * h, y1 + uy * h
-    return [
-        (ax + px * h, ay + py * h),
-        (bx + px * h, by + py * h),
-        (bx - px * h, by - py * h),
-        (ax - px * h, ay - py * h),
-    ]
-
-
 def _center_mm(rects):
     """The middle of the drawn rectangles' bounding box in KiCad mm, or None
     for nothing drawn -- where the preview footprint is anchored (_anchor), so
@@ -135,21 +114,27 @@ def _anchor(fp, rects):
         fp.SetPosition(vec2(pcbnew.FromMM(center[0]), pcbnew.FromMM(center[1])))
 
 
-def draw(board, segments_mm, layer_id, trace_w_mm):
-    """Draw (or redraw) the wizard's antenna preview on ``board``: the
-    candidate's centerline ``segments_mm`` (board-frame KiCad mm,
-    design.geometry.Geometry.centerline_segments) on ``layer_id`` as solid
-    filled rectangles ``trace_w_mm`` wide, so the preview reads as the track
-    the footprint would place. Returns the preview footprint, creating it the
-    first time -- or None for a candidate with nothing to draw at all (every
-    segment degenerate), which clears instead: an empty footprint would be an
-    invisible item to click and to save.
+def draw(board, layers):
+    """Draw (or redraw) the wizard's antenna preview on ``board``: ``layers``
+    is a sequence of ``(layer_id, polys_mm)`` groups -- board-frame KiCad mm
+    corner lists (design.geometry.Geometry.preview_polys) drawn as solid filled
+    polygons on that layer, so the preview reads as the copper the footprint
+    would place. The caller hands over the shapes rather than a centerline and
+    a width because the copper is the design's own arithmetic: which piece is a
+    millimetre of track and which is a patch tens of millimetres across is
+    something only it knows (geometry.Path.width). Returns the preview
+    footprint, creating it the first time -- or None for a candidate with
+    nothing to draw at all, which clears instead: an empty footprint would be
+    an invisible item to click and to save.
 
-    ``layer_id`` is the feed copper layer for a candidate that fits the area
-    and the area marker's own User layer (area_marker.marker_layer) for one
-    that doesn't: the same drawing either way, but only real metal is ever
-    drawn as metal -- an antenna hanging out of the rectangle is a sketch, not
-    copper anyone would fabricate.
+    The candidate's own layer is the feed copper layer while it fits the area
+    and the area marker's own User layer (area_marker.marker_layer) while it
+    doesn't: the same drawing either way, but only real metal is ever drawn as
+    metal -- an antenna hanging out of the rectangle is a sketch, not copper
+    anyone would fabricate. More than one group is for an antenna that is not
+    all on one layer: a design radiating against a ground plane sketches that
+    plane on the layer carrying it, and the two halves are one preview, drawn,
+    clicked and cleared together.
 
     A redraw **reuses the shapes already on the footprint**, rewriting each in
     place (feed_marker._rewrite_filled_poly): a preview that was saved with the
@@ -157,22 +142,25 @@ def draw(board, segments_mm, layer_id, trace_w_mm):
     is a use-after-free (feed_marker._detach_item spells it out). Only the
     surplus a shorter candidate leaves over is detached -- and the count only
     changes when the candidate's shape does (straight vs folded), so the common
-    redraw touches the footprint's item list not at all."""
+    redraw touches the footprint's item list not at all. A shape reused across
+    a redraw is told its layer every time, so a group that moved layers (the
+    candidate spilling out of the area) carries its shapes with it."""
     rects = [
-        corners
-        for corners in (_rect_corners(seg, trace_w_mm) for seg in segments_mm)
-        if corners is not None
+        (layer_id, corners)
+        for layer_id, polys_mm in layers
+        for corners in polys_mm
+        if len(corners) >= 3
     ]
     if not rects:
         clear(board)
         return None
     fps = preview_footprints(board)
     fp = fps[0] if fps else _new_footprint(board)
-    _anchor(fp, rects)
+    _anchor(fp, [corners for _, corners in rects])
     drawn = items(fp)
-    for poly, corners in zip(drawn, rects):
+    for poly, (layer_id, corners) in zip(drawn, rects):
         feed_marker._rewrite_filled_poly(poly, layer_id, corners)
-    for corners in rects[len(drawn) :]:
+    for layer_id, corners in rects[len(drawn) :]:
         feed_marker._add_filled_poly(fp, layer_id, corners)
     for poly in drawn[len(rects) :]:
         feed_marker._detach_item(fp, poly)

@@ -13,6 +13,7 @@ See wx_stub.py for what "stubbed" means here.
 
 import contextlib
 import json
+import math
 import pathlib
 import sys
 import tempfile
@@ -58,7 +59,7 @@ class _Area:
         self._spec = {
             "area": (0.0, 0.0, w, h),
             "edge": "bottom",
-            "frac": 0.3,
+            "frac": design.feed_frac,
             "rot_deg": 0.0,
             "pivot": (0.0, 0.0),
             "gap_mm": 0.5,
@@ -107,6 +108,11 @@ class _Page:
 
     def refresh_area_checks(self):
         self.area_check_refreshes += 1
+
+    def ground_layer_name(self):
+        # The Area box's pick: a plane on the bottom copper for the design
+        # that radiates against one, nothing for the designs that don't.
+        return "B_Cu" if self.design.needs_ground_plane else ""
 
 
 def _section(design):
@@ -503,6 +509,35 @@ def test_a_candidate_too_long_for_the_area_is_still_a_shape_to_draw():
         assert spec["area"] == section.page.area.spec()["area"]
 
 
+def test_only_a_design_that_radiates_against_a_plane_previews_one():
+    """The plane sketched beside the candidate is the area marker's own
+    rectangle, and only for a design that needs a plane at all: every other
+    antenna is copper on one layer, and a rectangle drawn on the pour beside it
+    would be a requirement nobody has."""
+    for design, section in _each_design():
+        spec = section.page.area.spec()
+        polys = section._ground_plane_polys(spec)
+        assert bool(polys) is design.needs_ground_plane, design.key
+        if polys:
+            x0, y0, x1, y1 = spec["area"]
+            assert polys == [[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]], design.key
+
+
+def test_the_previewed_plane_turns_with_the_marker():
+    """It is the marker's rectangle, so an area dragged round off-grid takes
+    the plane with it -- the candidate is rotated onto the board the same way
+    (Geometry.preview_polys)."""
+    design = next(d for d in registry.DESIGNS if d.needs_ground_plane)
+    section = _section(design)
+    spec = dict(section.page.area.spec(), rot_deg=90.0, pivot=(0.0, 0.0))
+    (corners,) = section._ground_plane_polys(spec)
+    x0, y0, x1, y1 = spec["area"]
+    want = [(-y0, x0), (-y0, x1), (-y1, x1), (-y1, x0)]
+    for (gx, gy), (wx, wy) in zip(corners, want):
+        assert math.isclose(gx, wx, abs_tol=1e-9), corners
+        assert math.isclose(gy, wy, abs_tol=1e-9), corners
+
+
 def test_the_candidate_cannot_be_asked_for_without_a_marker():
     """No marker / an unusable row is the area section's and the rows' story
     to tell; here it is simply an error, which the preview reports on its
@@ -557,8 +592,14 @@ def test_the_sweeps_own_warning_needs_no_pass_and_no_board():
     for design, section in _each_design():
         key = design.LENGTH_KEY
         # A sweep well inside the design's own starter area: nothing to say.
-        section._lo[key].ChangeValue("10")
-        section._hi[key].ChangeValue("15")
+        # Read off the design rather than typed in, because "well inside" is
+        # its own business at both ends -- a starter area holds the seed
+        # length by contract (test_designs), and a length far *below* it is
+        # not automatically a shape: a patch shorter than its own inset is
+        # nothing (design/patch.py).
+        nominal = design.default_values(F0)[key]
+        section._lo[key].ChangeValue(f"{nominal * 0.8:g}")
+        section._hi[key].ChangeValue(f"{nominal:g}")
         assert section.plan_problems() == [], design.key
 
         # Sweep the resonant length far past any starter area: most of the

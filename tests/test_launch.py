@@ -91,6 +91,25 @@ def test_the_control_file_is_named_inside_the_container_too(tmp_path):
     assert argv[argv.index("--control") + 1] == "/work/run.ctl"
 
 
+def test_a_scan_candidate_mounts_the_folder_its_gerbers_are_in(tmp_path):
+    # A scan plots one set of gerbers into the scan folder and writes a config
+    # per candidate below it, so every candidate's config says
+    # ../gerbers/...gbr. Mount only the candidate's own folder and that path is
+    # above the mount: the solver dies on "cannot open ../gerbers/..." before
+    # it meshes anything, for every design, on every machine that runs in a
+    # container. So the scan folder is mounted and the candidate's directory is
+    # the cwd inside it.
+    cand = tmp_path / "cand-00"
+    cand.mkdir()
+    argv, _cwd, _name = _docker_launcher().command(
+        str(cand / "pcb.yaml"), mount=tmp_path
+    )
+    mounts = [argv[i + 1] for i, word in enumerate(argv) if word == "-v"]
+    assert f"{tmp_path}:/work" in mounts
+    assert argv[argv.index("-w") + 1] == "/work/cand-00"
+    assert argv[-1] == "/work/cand-00/pcb.yaml"
+
+
 def test_flags_are_left_alone(tmp_path):
     argv, _cwd, _name = _docker_launcher().command(
         str(tmp_path / "pcb.yaml"), grid_only=True

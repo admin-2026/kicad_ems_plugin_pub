@@ -11,9 +11,10 @@ It adds one button to the PCB toolbar. Behind it:
   your real copper, stackup and drills and reports the antenna's radiation
   pattern and impedance (S11).
 - **Design wizards** for common topologies — an **L-shaped monopole**, a
-  **meandered inverted-F** and a **meandered monopole**. Mark the area the
-  antenna may use, sweep its dimensions, and the plugin simulates the
-  candidates and ranks them by S11 at your target frequency.
+  **meandered inverted-F**, a **meandered monopole** and an **inset-fed
+  microstrip patch**. Mark the area the antenna may use, sweep its dimensions,
+  and the plugin simulates the candidates and ranks them by S11 at your target
+  frequency.
 
 ## Install
 
@@ -73,7 +74,8 @@ re-running.
 
 ### Design an antenna from scratch
 
-Pick a designer in the sidebar (**L-monopole**, **Inverted-F** or **Meander**):
+Pick a designer in the sidebar (**L-monopole**, **Inverted-F**, **Meander** or
+**Patch**):
 
 1. Place the **area marker** — a rectangle showing where the antenna may live,
    with an arrow marking where the feed enters. Size it **on the board**:
@@ -82,6 +84,11 @@ Pick a designer in the sidebar (**L-monopole**, **Inverted-F** or **Meander**):
    an **Angle** field turns it to any angle between KiCad's rotation steps.
 2. Choose which dimensions to sweep (the resonant length, track width, and the
    topology's own knobs). Moving a slider previews that candidate on the board.
+   The **Patch** designer also asks which copper layer carries the ground plane
+   it radiates against. Every candidate is simulated over a plane covering the
+   antenna area on that layer — the scan supplies it, and the preview sketches
+   it beside the candidate — so pour your real plane there before you
+   fabricate.
 3. Press **Start scan**. Each candidate is simulated on a copy of your board —
    the board itself is never modified — and the results table ranks them.
 4. Press **Generate + place footprint** to put the winner on the board as a

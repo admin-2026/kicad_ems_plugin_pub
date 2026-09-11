@@ -76,6 +76,13 @@ def heading(parent, text):
     return _restyle(wx.StaticText(parent, label=text), bold=True)
 
 
+def bolded(label):
+    """An already-built label in the native font, bold -- for a line the user
+    must not skim past that isn't a heading (a wrapping hint under a status
+    line). ``heading`` builds one; this restyles one built elsewhere."""
+    return _restyle(label, bold=True)
+
+
 # Why a knob shows its config key at all, and the three places it does it:
 #
 # The solver names its knobs by key and nothing else -- a warning says
